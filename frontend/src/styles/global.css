@@ -1,0 +1,105 @@
+/* ===== AI 小说平台 · 文艺风 ===== */
+:root {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --text: #2c2416;
+  --text-muted: #8b7e6a;
+  --accent: #c8952c;
+  --accent-light: #f5e6c8;
+  --accent-dark: #7a5a1a;
+  --primary: #3a3226;
+  --border: #e8e0d5;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.04);
+  --shadow: 0 4px 20px rgba(0,0,0,.06);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,.1);
+  --radius: 4px;
+  --radius-lg: 8px;
+  --transition: all 0.2s cubic-bezier(.4,0,.2,1);
+  --font-display: Georgia, 'Noto Serif SC', 'Source Han Serif SC', serif;
+  --font-body: -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+html,body,#app { height:100%; }
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.7;
+}
+
+h1,h2,h3,h4 { font-family: var(--font-display); letter-spacing: -0.02em; }
+
+/* Buttons */
+.btn {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:9px 22px; border-radius:var(--radius); border:1px solid transparent;
+  font-size:14px; font-weight:600; cursor:pointer;
+  transition:var(--transition); text-decoration:none;
+}
+.btn-primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+.btn-primary:hover { background:var(--accent-dark); transform:translateY(-1px); box-shadow:0 4px 12px rgba(200,149,44,.25); }
+.btn-outline { background:transparent; border-color:var(--border); color:var(--text); }
+.btn-outline:hover { border-color:var(--accent); color:var(--accent); }
+.btn-sm { padding:5px 12px; font-size:12px; }
+
+/* Cards */
+.card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:28px;
+  box-shadow:var(--shadow-sm); transition:var(--transition);
+}
+.card:hover { box-shadow:var(--shadow); }
+
+/* Novel book grid */
+.book-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(175px, 1fr));
+  gap:20px;
+}
+.book-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-lg); overflow:hidden;
+  cursor:pointer; transition:var(--transition);
+  box-shadow:var(--shadow-sm);
+  display:flex; flex-direction:column;
+}
+.book-card:hover { transform:translateY(-4px); box-shadow:var(--shadow-lg); border-color:var(--accent); }
+.book-cover {
+  aspect-ratio:3/4; background:linear-gradient(135deg, var(--primary), #5a4e3c);
+  display:flex; align-items:center; justify-content:center;
+  font-size:48px; color:rgba(255,255,255,.6); font-family:var(--font-display);
+  overflow:hidden; flex-shrink:0;
+}
+.book-cover img { width:100%; height:100%; object-fit:cover; }
+.book-body { padding:14px; flex:1; display:flex; flex-direction:column; }
+.book-body h3 { font-size:15px; font-weight:700; margin-bottom:4px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.book-body .author { font-size:12px; color:var(--text-muted); margin-bottom:auto; }
+.book-tags { display:flex; gap:6px; align-items:center; font-size:11px; margin-top:8px; }
+
+/* Inputs */
+.input {
+  width:100%; padding:12px 16px; border:1px solid var(--border);
+  border-radius:var(--radius); font-size:15px; outline:none;
+  transition:var(--transition); background:var(--surface);
+  font-family:var(--font-body);
+}
+.input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(200,149,44,.1); }
+
+/* Tags */
+.tag {
+  display:inline-block; padding:3px 10px; border-radius:3px;
+  font-size:12px; font-weight:600; background:var(--accent-light); color:var(--accent-dark);
+}
+
+/* Responsive */
+@media (max-width:768px) {
+  .book-grid { grid-template-columns:repeat(3, 1fr); gap:12px; }
+  .book-cover { font-size:36px; }
+  .card { padding:20px; }
+}
+@media (max-width:480px) {
+  .book-grid { grid-template-columns:repeat(2, 1fr); gap:8px; }
+}

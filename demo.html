@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 小说创作平台 - 演示</title>
+<link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+<style>
+:root { color-scheme: light; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; }
+.container { display: flex; height: 100vh; }
+.sidebar { width: 220px; background: #1d1e1f; color: #bfcbd9; display: flex; flex-direction: column; }
+.logo { padding: 18px 20px; color: white; font-size: 18px; font-weight: bold; border-bottom: 1px solid #2d2d2d; display: flex; align-items: center; gap: 10px; }
+.nav-item { padding: 14px 20px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px; transition: all 0.2s; }
+.nav-item:hover, .nav-item.active { background: #2d2d2d; color: #409eff; }
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.header { background: white; height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid #e4e7ed; }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: #409eff; color: white; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+.content { flex: 1; overflow-y: auto; padding: 24px; }
+.card { background: white; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.card-header h2 { font-size: 18px; color: #303133; }
+.btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+.btn-primary { background: #409eff; color: white; }
+.btn-primary:hover { background: #337ecc; }
+.btn-success { background: #67c23a; color: white; }
+.btn-warning { background: #e6a23c; color: white; }
+.btn-info { background: #909399; color: white; }
+.btn-text { background: none; color: #409eff; border: 1px solid #dcdfe6; }
+.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+.stat-card { background: white; border-radius: 12px; padding: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); cursor: pointer; transition: transform 0.2s; }
+.stat-card:hover { transform: translateY(-2px); }
+.stat-value { font-size: 36px; font-weight: bold; color: #303133; }
+.stat-label { font-size: 14px; color: #909399; margin-top: 4px; }
+.novel-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.novel-card { background: white; border-radius: 12px; padding: 20px; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.06); transition: all 0.2s; }
+.novel-card:hover { transform: translateY(-4px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+.novel-cover { height: 100px; background: linear-gradient(135deg, #e8f4fd, #f0f0ff); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; font-size: 40px; }
+.novel-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.novel-desc { font-size: 13px; color: #909399; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 8px; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 6px; }
+.tag-info { background: #e8f4ff; color: #409eff; }
+.tag-success { background: #e8f9e8; color: #67c23a; }
+.tag-warning { background: #fdf6ec; color: #e6a23c; }
+.hidden { display: none; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 14px; color: #606266; margin-bottom: 6px; font-weight: 500; }
+.form-input, .form-select, .form-textarea { width: 100%; padding: 10px 12px; border: 1px solid #dcdfe6; border-radius: 8px; font-size: 14px; outline: none; transition: border-color 0.2s; }
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: #409eff; }
+.form-textarea { resize: vertical; min-height: 80px; }
+.empty-state { text-align: center; padding: 40px; color: #909399; }
+.empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+.action-btns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.action-btn { padding: 20px; text-align: center; background: #f5f7fa; border-radius: 10px; cursor: pointer; font-size: 16px; transition: all 0.2s; }
+.action-btn:hover { background: #e8f4ff; color: #409eff; }
+.chapter-list { border: 1px solid #ebeef5; border-radius: 8px; }
+.chapter-item { padding: 14px 20px; display: flex; align-items: center; gap: 14px; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
+.chapter-item:last-child { border-bottom: none; }
+.chapter-item:hover { background: #f5f7fa; }
+.chapter-num { width: 28px; height: 28px; border-radius: 50%; background: #409eff; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; }
+.chapter-info { flex: 1; }
+.chapter-name { font-size: 15px; margin-bottom: 3px; }
+.chapter-meta { font-size: 12px; color: #909399; }
+.provider-item { border: 1px solid #ebeef5; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.provider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.provider-name { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.provider-detail { font-size: 13px; color: #606266; line-height: 2; }
+.provider-detail code { background: #f5f7fa; padding: 2px 6px; border-radius: 4px; font-size: 12px; color: #409eff; }
+.profile-form { max-width: 800px; }
+.editor-area { min-height: 500px; border: 1px solid #dcdfe6; border-radius: 8px; padding: 24px; font-size: 16px; line-height: 1.8; }
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal { background: white; border-radius: 12px; padding: 24px; width: 520px; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 40px rgba(0,0,0,0.15); }
+.modal h3 { font-size: 18px; margin-bottom: 20px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+.alert-info { background: #e8f4ff; border: 1px solid #b3d8ff; padding: 14px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; line-height: 2; }
+.text-muted { color: #909399; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="logo">✍️ AI 小说创作</div>
+    <div class="nav-item active" data-page="dashboard" onclick="showPage('dashboard')">📊 工作台</div>
+    <div class="nav-item" data-page="novels" onclick="showPage('novels')">📚 我的小说</div>
+    <div class="nav-item" data-page="chapter" onclick="showPage('chapter')">📝 章节编辑</div>
+    <div class="nav-item" data-page="profile" onclick="showPage('profile')">👤 写作风格</div>
+    <div class="nav-item" data-page="providers" onclick="showPage('providers')">⚙️ 模型服务商</div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="header">
+      <span style="font-size: 14px; color: #606266;">欢迎回来，王邦</span>
+      <div class="header-right">
+        <span class="avatar">王</span>
+        <span style="font-size: 14px;">王邦</span>
+      </div>
+    </div>
+
+    <!-- ============ DASHBOARD PAGE ============ -->
+    <div class="content" id="page-dashboard">
+      <h2 style="margin-bottom: 20px;">工作台</h2>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div><div class="stat-value">3</div><div class="stat-label">我的小说</div></div>
+          <span style="font-size: 36px;">📚</span>
+        </div>
+        <div class="stat-card">
+          <div><div class="stat-value">12</div><div class="stat-label">总章节数</div></div>
+          <span style="font-size: 36px;">📄</span>
+        </div>
+        <div class="stat-card">
+          <div><div class="stat-value">2</div><div class="stat-label">AI模型</div></div>
+          <span style="font-size: 36px;">⚡</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span>快捷操作</span></div>
+        <div class="action-btns">
+          <div class="action-btn" onclick="showPage('novels')">➕<br>创建新小说</div>
+          <div class="action-btn" onclick="showPage('novels')">📖<br>继续创作</div>
+          <div class="action-btn" onclick="showPage('profile')">✏️<br>设置写作风格</div>
+          <div class="action-btn" onclick="showPage('providers')">🔧<br>配置AI模型</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span>最近作品</span><span class="btn btn-text" onclick="showPage('novels')">查看全部 →</span></div>
+        <div class="novel-grid">
+          <div class="novel-card" onclick="showPage('chapter')">
+            <div class="novel-cover">🌌</div>
+            <div class="novel-title">星辰大海</div>
+            <div class="novel-desc">一个少年在星际间冒险的故事</div>
+            <span class="tag tag-info">科幻</span><span class="tag tag-success">连载中</span>
+          </div>
+          <div class="novel-card" onclick="showPage('chapter')">
+            <div class="novel-cover">⚔️</div>
+            <div class="novel-title">剑道独尊</div>
+            <div class="novel-desc">少年持剑，踏遍九州大陆</div>
+            <span class="tag tag-warning">玄幻</span><span class="tag tag-info">草稿</span>
+          </div>
+          <div class="novel-card" onclick="showPage('chapter')">
+            <div class="novel-cover">💕</div>
+            <div class="novel-title">都市奇缘</div>
+            <div class="novel-desc">繁华都市中的奇幻爱情故事</div>
+            <span class="tag tag-info">都市</span><span class="tag tag-success">连载中</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ NOVELS PAGE ============ -->
+    <div class="content hidden" id="page-novels">
+      <div class="card-header"><h2>我的小说</h2><button class="btn btn-primary" onclick="showPage('chapter')">➕ 创建新小说</button></div>
+      <div class="novel-grid">
+        <div class="novel-card" onclick="showPage('chapter')">
+          <div class="novel-cover">🌌</div>
+          <div class="novel-title">星辰大海</div>
+          <div class="novel-desc">一个少年在星际间冒险的故事，穿越银河系...</div>
+          <span class="tag tag-info">科幻</span><span class="tag tag-success">连载中</span><span style="font-size:12px;color:#909399;margin-left:8px;">5章</span>
+        </div>
+        <div class="novel-card" onclick="showPage('chapter')">
+          <div class="novel-cover">⚔️</div>
+          <div class="novel-title">剑道独尊</div>
+          <div class="novel-desc">少年持剑入江湖，一步步踏遍九州大陆...</div>
+          <span class="tag tag-warning">玄幻</span><span class="tag tag-info">草稿</span><span style="font-size:12px;color:#909399;margin-left:8px;">3章</span>
+        </div>
+        <div class="novel-card" onclick="showPage('chapter')">
+          <div class="novel-cover">💕</div>
+          <div class="novel-title">都市奇缘</div>
+          <div class="novel-desc">在繁华魔都中，一段奇幻的爱情就此展开...</div>
+          <span class="tag tag-info">都市</span><span class="tag tag-success">连载中</span><span style="font-size:12px;color:#909399;margin-left:8px;">4章</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ CHAPTER EDIT PAGE ============ -->
+    <div class="content hidden" id="page-chapter">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span class="btn btn-text" onclick="showPage('novels')">← 返回</span>
+          <h2>星辰大海 - 第1章：觉醒</h2>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="document.getElementById('genModal').style.display='flex'">⚡ AI 生成</button>
+          <button class="btn btn-success">💾 保存</button>
+        </div>
+      </div>
+
+      <!-- Chapter list sidebar -->
+      <div style="display:flex;gap:20px;">
+        <div style="width:200px;flex-shrink:0;">
+          <div class="chapter-list">
+            <div class="chapter-item" style="background:#e8f4ff;border-left:3px solid #409eff;">
+              <div class="chapter-num">1</div>
+              <div class="chapter-info"><div class="chapter-name">觉醒</div><div class="chapter-meta">2,345字 · 草稿</div></div>
+            </div>
+            <div class="chapter-item"><div class="chapter-num">2</div><div class="chapter-info"><div class="chapter-name">离别</div><div class="chapter-meta">1,890字 · 草稿</div></div></div>
+            <div class="chapter-item"><div class="chapter-num">3</div><div class="chapter-info"><div class="chapter-name">初入星河</div><div class="chapter-meta">3,120字 · 已完成</div></div></div>
+            <div class="chapter-item"><div class="chapter-num">4</div><div class="chapter-info"><div class="chapter-name">暗流涌动</div><div class="chapter-meta">2,100字 · 草稿</div></div></div>
+            <div class="chapter-item"><div class="chapter-num">5</div><div class="chapter-info"><div class="chapter-name">破晓</div><div class="chapter-meta">0字 · 草稿</div></div></div>
+          </div>
+        </div>
+
+        <!-- Editor -->
+        <div style="flex:1;">
+          <div class="editor-area">
+            <p style="margin-bottom:12px;text-indent:2em;">
+              公元 2147 年，人类已经走出太阳系，在银河系的各个角落建立了殖民地。然而，随着人类版图的扩张，新的威胁也随之而来。
+            </p>
+            <p style="margin-bottom:12px;text-indent:2em;">
+              林夜站在星际学院的训练场上，汗水顺着他的额头滑落。他今年十七岁，是所有新生中年龄最小的一个。周围的学生都用异样的眼光看着他——他是唯一一个来自边缘星系的学生。
+            </p>
+            <p style="margin-bottom:12px;text-indent:2em;color:#409eff;">
+              <em>「你确定要参加觉醒测试吗？」教官的声音从通讯器中传来，「一旦开始，就无法回头。」</em>
+            </p>
+            <p style="margin-bottom:12px;text-indent:2em;">
+              林夜深吸一口气，点了点头。他知道这意味着什么。觉醒测试会激活人类基因中潜藏的能力，有的人会获得超乎常人的力量，有的人则可能再也醒不过来。
+            </p>
+            <p style="margin-bottom:12px;text-indent:2em;">
+              但他别无选择。他的父亲在三年前的一场星际战役中失踪，母亲独自支撑着家里的一切。他必须要变强，强到足以守护自己想要守护的人。
+            </p>
+            <p style="text-indent:2em;">
+              ...
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Gen Modal -->
+      <div class="modal-overlay" id="genModal" style="display:none;" onclick="if(event.target===this) this.style.display='none'">
+        <div class="modal">
+          <h3>⚡ AI 生成章节</h3>
+          <div class="form-group"><label>引导提示词</label><textarea class="form-textarea" rows="4" placeholder="描述您希望这一章包含的内容...">请根据之前剧情继续创作，侧重描写主角在面对觉醒考验时的内心挣扎和蜕变过程，氛围要紧张且充满希望。</textarea></div>
+          <div class="form-group"><label>目标字数</label><input class="form-input" type="number" value="2500" min="500" max="10000"></div>
+          <div class="form-group"><label>AI 模型</label><select class="form-select"><option>DeepSeek - deepseek-chat (默认)</option><option>OpenAI - gpt-4o-mini</option></select></div>
+          <div style="background:#f5f7fa;padding:12px;border-radius:8px;margin-bottom:12px;font-size:13px;color:#606266;">
+            📝 <strong>已加载您的写作风格：</strong>擅长细腻的心理描写，偏好第一人称视角，文风简洁明快
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-text" onclick="document.getElementById('genModal').style.display='none'">取消</button>
+            <button class="btn btn-primary" onclick="alert('正在调用 AI 生成...\n\n生成完成！2,487 字章节已添加到编辑器中。');document.getElementById('genModal').style.display='none'">开始生成</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ PROFILE PAGE ============ -->
+    <div class="content hidden" id="page-profile">
+      <h2 style="margin-bottom:8px;">写作风格设置</h2>
+      <p class="text-muted" style="margin-bottom:20px;">设置您的写作风格和偏好，AI 将根据这些设定生成符合您风格的小说内容</p>
+      <div class="card profile-form">
+        <div class="form-group"><label>笔名</label><input class="form-input" value="星辰写手"></div>
+        <h4 style="margin:16px 0 12px;padding-bottom:8px;border-bottom:1px solid #ebeef5;">写作风格</h4>
+        <div class="form-group"><label>写作风格</label><textarea class="form-textarea" rows="3">喜欢第一人称视角叙事，擅长细腻的环境描写和心理刻画。文风简洁明快，不过分堆砌辞藻。注重情节的逻辑性和人物成长的弧光。</textarea></div>
+        <div class="form-group"><label>创作偏好</label><textarea class="form-textarea" rows="3">偏爱多主角群像叙事，喜欢在故事中埋设伏笔和悬念。擅长科幻和玄幻题材，经常使用倒叙和插叙手法。不喜欢过度血腥暴力的描写。</textarea></div>
+        <div class="form-group"><label>题材偏好</label><input class="form-input" value="科幻, 玄幻, 都市"></div>
+        <h4 style="margin:16px 0 12px;padding-bottom:8px;border-bottom:1px solid #ebeef5;">风格细节</h4>
+        <div class="form-group"><label>语调文风</label><select class="form-select"><option>简洁明快</option><option>轻松幽默</option><option>文艺优美</option><option selected>沉稳内敛</option></select></div>
+        <div class="form-group"><label>角色塑造</label><textarea class="form-textarea" rows="2">注重角色的成长弧光和性格复杂性，每个主要角色都有自己的故事线和内心世界。不喜欢非黑即白的角色设定。</textarea></div>
+        <div class="form-group"><label>情节构建</label><textarea class="form-textarea" rows="2">喜欢层层递进的情节推进，每个章节至少有一个小高潮。擅长设置悬念，偏好反转和意想不到的剧情走向。</textarea></div>
+        <div style="margin-top:16px;"><button class="btn btn-primary" onclick="alert('写作风格已保存！AI 生成时将会参考这些设定。')">💾 保存设置</button></div>
+      </div>
+    </div>
+
+    <!-- ============ PROVIDERS PAGE ============ -->
+    <div class="content hidden" id="page-providers">
+      <div class="card-header"><div><h2>模型服务商管理</h2><p class="text-muted">支持 OpenAI 兼容接口的模型服务商（DeepSeek、OpenAI、Moonshot 等）</p></div><button class="btn btn-primary" onclick="alert('添加服务商功能\n\n请填写：\n- 服务商名称\n- API 地址\n- API 密钥\n- 模型名称')">➕ 添加服务商</button></div>
+
+      <div class="alert-info">
+        <strong>🔌 常见服务商配置参考：</strong><br>
+        DeepSeek：https://api.deepseek.com / deepseek-chat<br>
+        OpenAI：https://api.openai.com / gpt-4o-mini<br>
+        Moonshot：https://api.moonshot.cn / moonshot-v1-8k<br>
+        通义千问：https://dashscope.aliyuncs.com/compatible-mode/v1 / qwen-turbo
+      </div>
+
+      <div class="provider-item">
+        <div class="provider-header">
+          <div class="provider-name"><span class="tag tag-success" style="font-size:12px;">默认</span>DeepSeek</div>
+          <div>
+            <button class="btn btn-text" style="font-size:12px;">✏️ 编辑</button>
+            <button class="btn btn-text" style="font-size:12px;color:#f56c6c;">🗑️ 删除</button>
+          </div>
+        </div>
+        <div class="provider-detail">
+          <div>模型：<code>deepseek-chat</code></div>
+          <div>接口地址：<code>https://api.deepseek.com</code></div>
+          <div>类型：OpenAI 兼容接口</div>
+        </div>
+      </div>
+
+      <div class="provider-item">
+        <div class="provider-header">
+          <div class="provider-name">OpenAI</div>
+          <div>
+            <button class="btn btn-text" style="font-size:12px;">✏️ 编辑</button>
+            <button class="btn btn-text" style="font-size:12px;color:#f56c6c;">🗑️ 删除</button>
+          </div>
+        </div>
+        <div class="provider-detail">
+          <div>模型：<code>gpt-4o-mini</code></div>
+          <div>接口地址：<code>https://api.openai.com</code></div>
+          <div>类型：OpenAI 兼容接口</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function showPage(page) {
+  // Hide all pages
+  document.querySelectorAll('.content').forEach(el => el.classList.add('hidden'));
+  // Show target page
+  document.getElementById('page-' + page).classList.remove('hidden');
+  // Update nav
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelector('[data-page="' + page + '"]').classList.add('active');
+  // Close modals
+  document.querySelectorAll('.modal-overlay').forEach(el => el.style.display = 'none');
+}
+</script>
+</body>
+</html>

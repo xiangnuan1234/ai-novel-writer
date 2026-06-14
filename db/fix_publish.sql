@@ -1,0 +1,4 @@
+-- 确保发布功能所需的字段存在
+ALTER TABLE novel ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT FALSE;
+ALTER TABLE novel ADD COLUMN IF NOT EXISTS tags VARCHAR(255);
+UPDATE novel SET is_published = FALSE WHERE is_published IS NULL;
