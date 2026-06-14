@@ -12,6 +12,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.book }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,5 +37,3 @@ jobs:
         run: |
           cd cloudflare-backend
           npx wrangler deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.book }}
