@@ -6,6 +6,9 @@ backend/.classpath
 backend/.project
 backend/.settings/
 
+# Cloudflare Backend
+cloudflare-backend/node_modules/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

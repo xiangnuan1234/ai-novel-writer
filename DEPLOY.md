@@ -17,7 +17,7 @@
 ```bash
 cd E:\项目\ai-novel-writer
 git init && git add . && git commit -m "v1"
-git remote add origin https://github.com/你的用户名/ai-novel-writer.git
+git remote add origin https://github.com/xiangnuan1234/ai-novel-writer.git
 git push -u origin main
 ```
 
