@@ -9,7 +9,7 @@ app.use('/*', cors({ origin: '*', credentials: true }))
 
 const JWT_SECRET = 'ai-novel-writer-secret-key-2025'
 
-const auth = jwt({ secret: JWT_SECRET })
+const auth = jwt({ secret: JWT_SECRET, alg: 'HS256' })
 
 async function hash(str) {
   const encoder = new TextEncoder()
