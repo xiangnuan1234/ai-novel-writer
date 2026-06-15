@@ -8,6 +8,12 @@ const api = new Hono()
 // ========== 中间件 ==========
 app.use('/*', cors({ origin: '*', credentials: true }))
 
+// 错误处理中间件
+api.onError((err, c) => {
+  console.error('API Error:', err.message)
+  return c.json({ code: 500, message: err.message }, 500)
+})
+
 const JWT_SECRET = 'ai-novel-writer-secret-key-2025'
 
 const auth = jwt({ secret: JWT_SECRET, alg: 'HS256' })
