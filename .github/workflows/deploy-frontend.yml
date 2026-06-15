@@ -12,8 +12,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +34,9 @@ jobs:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
       - name: Deploy to Cloudflare Pages
-        run: |
-          cd frontend
-          npx wrangler pages deploy dist --project-name=ai-novel-writer --create-project
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: '694b74c6d5ec82483435f345f50e6af6'
+          projectName: 'ai-novel-writer'
+          directory: 'frontend/dist'
