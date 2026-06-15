@@ -134,6 +134,60 @@ api.get('/init-db', async (c) => {
   }
 })
 
+// 数据导入（用于迁移数据）
+api.post('/import-data', async (c) => {
+  try {
+    const data = await c.req.json()
+    const db = c.env.DB
+    
+    if (data.users) {
+      for (const user of data.users) {
+        await db.prepare(
+          'INSERT OR IGNORE INTO users(id,username,password,email,nickname,role,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)'
+        ).bind(user.id, user.username, user.password, user.email, user.nickname, user.role, user.created_at, user.updated_at).run()
+      }
+    }
+    
+    if (data.novels) {
+      for (const novel of data.novels) {
+        await db.prepare(
+          'INSERT OR IGNORE INTO novel(id,user_id,title,description,cover_image,genre,tags,style_id,status,chapter_count,word_count,is_published,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
+        ).bind(novel.id, novel.user_id, novel.title, novel.description, novel.cover_image, novel.genre, novel.tags, novel.style_id, novel.status, novel.chapter_count, novel.word_count, novel.is_published, novel.created_at, novel.updated_at).run()
+      }
+    }
+    
+    if (data.chapters) {
+      for (const chapter of data.chapters) {
+        await db.prepare(
+          'INSERT OR IGNORE INTO chapter(id,novel_id,chapter_number,title,content,outline,status,word_count,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)'
+        ).bind(chapter.id, chapter.novel_id, chapter.chapter_number, chapter.title, chapter.content, chapter.outline, chapter.status, chapter.word_count, chapter.created_at, chapter.updated_at).run()
+      }
+    }
+    
+    return c.json({ code: 200, message: '数据导入成功' })
+  } catch(e) {
+    return c.json({ code: 500, message: e.message }, 500)
+  }
+})
+
+// 添加示例数据
+api.get('/add-sample-data', async (c) => {
+  try {
+    const db = c.env.DB
+    
+    const pw = await hash('123456')
+    await db.prepare('INSERT OR IGNORE INTO users(username,password,nickname,role) VALUES(?,?,?,?)').bind('demo', pw, '演示用户', 'AUTHOR').run()
+    await db.prepare('INSERT OR IGNORE INTO novel(user_id,title,description,genre,tags,status,is_published) VALUES(?,?,?,?,?,?,?)').bind(1, 'AI 时代的爱情故事', '这是一个关于人工智能与人类之间情感的科幻小说...', '科幻', 'AI,爱情,未来', 'PUBLISHED', 1).run()
+    await db.prepare('INSERT OR IGNORE INTO chapter(novel_id,chapter_number,title,content) VALUES(?,?,?,?)').bind(1, 1, '第一章：相遇', '2045年，人工智能已经普及到了生活的方方面面...').run()
+    await db.prepare('INSERT OR IGNORE INTO chapter(novel_id,chapter_number,title,content) VALUES(?,?,?,?)').bind(1, 2, '第二章：对话', '林晓第一次与AI助手"晓云"进行深度对话...').run()
+    await db.prepare('UPDATE novel SET chapter_count=2 WHERE id=1').run()
+    
+    return c.json({ code: 200, message: '示例数据添加成功' })
+  } catch(e) {
+    return c.json({ code: 500, message: e.message }, 500)
+  }
+})
+
 // 注册
 api.post('/auth/register', async (c) => {
   try {
