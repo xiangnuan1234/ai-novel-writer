@@ -5,7 +5,7 @@ compatibility_date = "2025-06-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "ai-novel-db"
-database_id = "YOUR_D1_DATABASE_ID"  # GitHub Actions will create this
+database_id = "988ce9e7-e3e2-4582-a58c-fffea4013c60"
 
 [[r2_buckets]]
 binding = "COVERS"
