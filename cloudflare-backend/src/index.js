@@ -367,4 +367,7 @@ app.delete('/api/provider/:id', auth, async (c) => {
   return c.json({ code: 200, message: '已删除' })
 })
 
+// 添加不带 /api 前缀的路由别名，兼容前端请求
+app.route('/', app.route('/api'))
+
 export default app
