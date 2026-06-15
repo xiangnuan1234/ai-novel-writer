@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { jwt, sign } from 'hono/jwt'
 
 const app = new Hono()
+const api = new Hono()
 
 // ========== 中间件 ==========
 app.use('/*', cors({ origin: '*', credentials: true }))
@@ -22,7 +23,7 @@ function now() { return new Date().toISOString().replace('T',' ').substring(0,19
 // ========== 公开接口 ==========
 
 // 注册
-app.post('/api/auth/register', async (c) => {
+api.post('/auth/register', async (c) => {
   try {
     const { username, password, email, role } = await c.req.json()
     const db = c.env.DB
@@ -39,7 +40,7 @@ app.post('/api/auth/register', async (c) => {
 })
 
 // 登录
-app.post('/api/auth/login', async (c) => {
+api.post('/auth/login', async (c) => {
   try {
     const { username, password } = await c.req.json()
     const db = c.env.DB
@@ -51,7 +52,7 @@ app.post('/api/auth/login', async (c) => {
 })
 
 // 读者大厅 - 浏览
-app.get('/api/reader/browse', async (c) => {
+api.get('/reader/browse', async (c) => {
   const db = c.env.DB
   const novels = await db.prepare(
     'SELECT n.*, u.nickname as author_name FROM novel n JOIN users u ON n.user_id=u.id WHERE n.is_published=1 OR n.is_published IS NULL ORDER BY n.updated_at DESC LIMIT 50'
@@ -60,7 +61,7 @@ app.get('/api/reader/browse', async (c) => {
 })
 
 // 搜索
-app.get('/api/reader/search', async (c) => {
+api.get('/reader/search', async (c) => {
   const q = c.req.query('q') || ''
   const db = c.env.DB
   const novels = await db.prepare(
@@ -73,7 +74,7 @@ app.get('/api/reader/search', async (c) => {
 })
 
 // 分类浏览
-app.get('/api/reader/genre/:genre', async (c) => {
+api.get('/reader/genre/:genre', async (c) => {
   const g = c.req.param('genre')
   const db = c.env.DB
   const novels = await db.prepare(
@@ -83,14 +84,14 @@ app.get('/api/reader/genre/:genre', async (c) => {
 })
 
 // 分类列表
-app.get('/api/reader/genres', async (c) => {
+api.get('/reader/genres', async (c) => {
   const db = c.env.DB
   const rows = await db.prepare('SELECT DISTINCT genre FROM novel WHERE genre IS NOT NULL AND (is_published=1 OR is_published IS NULL)').all()
   return c.json({ code: 200, data: rows.results.map(r => r.genre) })
 })
 
 // 小说详情（公开）
-app.get('/api/reader/novel/:id', async (c) => {
+api.get('/reader/novel/:id', async (c) => {
   const db = c.env.DB
   const novel = await db.prepare('SELECT * FROM novel WHERE id=?').bind(c.req.param('id')).first()
   if (!novel) return c.json({ code: 400, message: '小说不存在' })
@@ -99,14 +100,14 @@ app.get('/api/reader/novel/:id', async (c) => {
 })
 
 // 章节列表（公开）
-app.get('/api/chapter/list/:novelId', async (c) => {
+api.get('/chapter/list/:novelId', async (c) => {
   const db = c.env.DB
   const chapters = await db.prepare('SELECT * FROM chapter WHERE novel_id=? ORDER BY chapter_number').bind(c.req.param('novelId')).all()
   return c.json({ code: 200, data: chapters.results })
 })
 
 // 章节详情（公开）
-app.get('/api/chapter/:id', async (c) => {
+api.get('/chapter/:id', async (c) => {
   const db = c.env.DB
   const chapter = await db.prepare('SELECT * FROM chapter WHERE id=?').bind(c.req.param('id')).first()
   if (!chapter) return c.json({ code: 400, message: '章节不存在' })
@@ -116,7 +117,7 @@ app.get('/api/chapter/:id', async (c) => {
 // ========== 需要登录的接口 ==========
 
 // 小说列表（作者自己）
-app.get('/api/novel/list', auth, async (c) => {
+api.get('/novel/list', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const db = c.env.DB
   const novels = await db.prepare('SELECT * FROM novel WHERE user_id=? ORDER BY updated_at DESC').bind(uid).all()
@@ -124,7 +125,7 @@ app.get('/api/novel/list', auth, async (c) => {
 })
 
 // 创建小说
-app.post('/api/novel', auth, async (c) => {
+api.post('/novel', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const { title, description, genre, tags, coverImage, styleId } = await c.req.json()
   const db = c.env.DB
@@ -136,7 +137,7 @@ app.post('/api/novel', auth, async (c) => {
 })
 
 // 获取小说
-app.get('/api/novel/:id', auth, async (c) => {
+api.get('/novel/:id', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const db = c.env.DB
   const novel = await db.prepare('SELECT * FROM novel WHERE id=? AND user_id=?').bind(c.req.param('id'), uid).first()
@@ -145,7 +146,7 @@ app.get('/api/novel/:id', auth, async (c) => {
 })
 
 // 更新小说
-app.put('/api/novel/:id', auth, async (c) => {
+api.put('/novel/:id', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const { title, description, genre, status, coverImage, tags } = await c.req.json()
   const db = c.env.DB
@@ -157,7 +158,7 @@ app.put('/api/novel/:id', auth, async (c) => {
 })
 
 // 删除小说
-app.delete('/api/novel/:id', auth, async (c) => {
+api.delete('/novel/:id', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const db = c.env.DB
   await db.prepare('DELETE FROM chapter WHERE novel_id=?').bind(c.req.param('id')).run()
@@ -166,7 +167,7 @@ app.delete('/api/novel/:id', auth, async (c) => {
 })
 
 // 创建章节
-app.post('/api/chapter/:novelId', auth, async (c) => {
+api.post('/chapter/:novelId', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const { title, outline } = await c.req.json()
   const db = c.env.DB
@@ -183,7 +184,7 @@ app.post('/api/chapter/:novelId', auth, async (c) => {
 })
 
 // 更新章节（保存内容）
-app.put('/api/chapter/:id', auth, async (c) => {
+api.put('/chapter/:id', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const { title, content, status } = await c.req.json()
   const db = c.env.DB
@@ -205,7 +206,7 @@ app.put('/api/chapter/:id', auth, async (c) => {
 })
 
 // 删除章节
-app.delete('/api/chapter/:id', auth, async (c) => {
+api.delete('/chapter/:id', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const db = c.env.DB
   const chapter = await db.prepare('SELECT * FROM chapter WHERE id=?').bind(c.req.param('id')).first()
@@ -218,14 +219,14 @@ app.delete('/api/chapter/:id', auth, async (c) => {
 })
 
 // ========== 风格管理 ==========
-app.get('/api/style/list', auth, async (c) => {
+api.get('/style/list', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const db = c.env.DB
   const styles = await db.prepare('SELECT * FROM writing_style WHERE user_id=? ORDER BY is_default DESC, id ASC').bind(uid).all()
   return c.json({ code: 200, data: styles.results.map(s => ({...s, isDefault: !!s.is_default})) })
 })
 
-app.post('/api/style', auth, async (c) => {
+api.post('/style', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const { name, writingStyleDesc, writingPreferences, genrePreferences, tone, characterStyle, plotStyle, otherSettings, isDefault } = await c.req.json()
   const db = c.env.DB
@@ -238,7 +239,7 @@ app.post('/api/style', auth, async (c) => {
 })
 
 // ========== 收藏/关注 ==========
-app.post('/api/reader/follow/:authorId', auth, async (c) => {
+api.post('/reader/follow/:authorId', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const aid = c.req.param('authorId')
   const db = c.env.DB
@@ -248,7 +249,7 @@ app.post('/api/reader/follow/:authorId', auth, async (c) => {
   return c.json({ code: 200, data: true })
 })
 
-app.post('/api/reader/bookmark/:novelId', auth, async (c) => {
+api.post('/reader/bookmark/:novelId', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const nid = c.req.param('novelId')
   const db = c.env.DB
@@ -258,7 +259,7 @@ app.post('/api/reader/bookmark/:novelId', auth, async (c) => {
   return c.json({ code: 200, data: true })
 })
 
-app.get('/api/reader/bookmarks', auth, async (c) => {
+api.get('/reader/bookmarks', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const db = c.env.DB
   const novels = await db.prepare(
@@ -267,7 +268,7 @@ app.get('/api/reader/bookmarks', auth, async (c) => {
   return c.json({ code: 200, data: novels.results.map(n => ({...n, chapterCount: n.chapter_count})) })
 })
 
-app.get('/api/reader/followed-novels', auth, async (c) => {
+api.get('/reader/followed-novels', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const db = c.env.DB
   const novels = await db.prepare(
@@ -277,7 +278,7 @@ app.get('/api/reader/followed-novels', auth, async (c) => {
 })
 
 // ========== 上传封面 ==========
-app.post('/api/upload/cover', auth, async (c) => {
+api.post('/upload/cover', auth, async (c) => {
   try {
     const form = await c.req.formData()
     const file = form.get('file')
@@ -289,14 +290,14 @@ app.post('/api/upload/cover', auth, async (c) => {
 })
 
 // 封面图片访问
-app.get('/api/uploads/covers/:name', async (c) => {
+api.get('/uploads/covers/:name', async (c) => {
   const obj = await c.env.COVERS.get(`covers/${c.req.param('name')}`)
   if (!obj) return c.notFound()
   return new Response(obj.body, { headers: { 'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000' } })
 })
 
 // ========== AI 生成（透传） ==========
-app.post('/api/ai/generate-outline', auth, async (c) => {
+api.post('/ai/generate-outline', auth, async (c) => {
   try {
     const { novelId, providerId, prompt } = await c.req.json()
     const db = c.env.DB
@@ -339,7 +340,7 @@ app.post('/api/ai/generate-outline', auth, async (c) => {
 })
 
 // 模型服务商列表
-app.get('/api/provider/list', auth, async (c) => {
+api.get('/provider/list', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const db = c.env.DB
   const providers = await db.prepare('SELECT * FROM model_provider WHERE user_id=? ORDER BY sort_order').bind(uid).all()
@@ -349,7 +350,7 @@ app.get('/api/provider/list', auth, async (c) => {
   })) })
 })
 
-app.post('/api/provider', auth, async (c) => {
+api.post('/provider', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   const { providerName, providerType, baseUrl, apiKey, modelName, isDefault } = await c.req.json()
   const db = c.env.DB
@@ -361,18 +362,13 @@ app.post('/api/provider', auth, async (c) => {
   return c.json({ code: 200, data: { id: p.id, providerName: p.provider_name, providerType: p.provider_type, baseUrl: p.base_url, modelName: p.model_name, isDefault: !!p.is_default } })
 })
 
-app.delete('/api/provider/:id', auth, async (c) => {
+api.delete('/provider/:id', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   await c.env.DB.prepare('DELETE FROM model_provider WHERE id=? AND user_id=?').bind(c.req.param('id'), uid).run()
   return c.json({ code: 200, message: '已删除' })
 })
 
-// 添加不带 /api 前缀的路由支持，兼容前端请求
-app.use('/*', async (c, next) => {
-  if (!c.req.path.startsWith('/api')) {
-    c.req.path = '/api' + c.req.path
-  }
-  await next()
-})
+// 挂载子应用到根路径
+app.route('/', api)
 
 export default app
