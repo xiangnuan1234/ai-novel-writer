@@ -38,4 +38,4 @@ jobs:
       - name: Deploy to Cloudflare Pages
         run: |
           cd frontend
-          npx wrangler pages deploy dist --project-name=ai-novel-writer
+          npx wrangler pages deploy dist --project-name=ai-novel-writer --create-project
