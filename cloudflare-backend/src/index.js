@@ -28,6 +28,20 @@ function now() { return new Date().toISOString().replace('T',' ').substring(0,19
 
 // ========== 公开接口 ==========
 
+// 健康检查
+api.get('/health', async (c) => {
+  try {
+    const db = c.env.DB
+    if (!db) {
+      return c.json({ code: 500, message: '数据库未绑定' }, 500)
+    }
+    const result = await db.prepare('SELECT 1 as test').first()
+    return c.json({ code: 200, data: 'ok', db: !!result })
+  } catch(e) {
+    return c.json({ code: 500, message: e.message }, 500)
+  }
+})
+
 // 注册
 api.post('/auth/register', async (c) => {
   try {
