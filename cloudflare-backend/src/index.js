@@ -105,9 +105,17 @@ api.get('/reader/genre/:genre', async (c) => {
 
 // 分类列表
 api.get('/reader/genres', async (c) => {
-  const db = c.env.DB
-  const rows = await db.prepare('SELECT DISTINCT genre FROM novel WHERE genre IS NOT NULL AND (is_published=1 OR is_published IS NULL)').all()
-  return c.json({ code: 200, data: rows.results.map(r => r.genre) })
+  try {
+    const db = c.env.DB
+    const rows = await db.prepare('SELECT DISTINCT genre FROM novel WHERE genre IS NOT NULL AND (is_published=1 OR is_published IS NULL)').all()
+    if (!rows || !rows.results) {
+      return c.json({ code: 200, data: [] })
+    }
+    return c.json({ code: 200, data: rows.results.map(r => r.genre) })
+  } catch(e) {
+    console.error('genres error:', e.message)
+    return c.json({ code: 500, message: e.message }, 500)
+  }
 })
 
 // 小说详情（公开）
