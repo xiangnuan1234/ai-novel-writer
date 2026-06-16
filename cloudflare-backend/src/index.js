@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { jwt, sign } from 'hono/jwt'
+import bcrypt from 'bcryptjs'
 
 const app = new Hono()
 const api = new Hono()
@@ -18,11 +19,17 @@ const JWT_SECRET = 'ai-novel-writer-secret-key-2025'
 
 const auth = jwt({ secret: JWT_SECRET, alg: 'HS256' })
 
-async function hash(str) {
+function hash(str) { return bcrypt.hashSync(str, 10) }
+async function verifyHash(str, hashStr) {
+  if (hashStr.startsWith('$2a$') || hashStr.startsWith('$2b$')) {
+    return bcrypt.compareSync(str, hashStr)
+  }
+  // fallback SHA-256
   const encoder = new TextEncoder()
   const data = encoder.encode(str)
   const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('')
+  const sha256 = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('')
+  return sha256 === hashStr
 }
 function now() { return new Date().toISOString().replace('T',' ').substring(0,19) }
 
@@ -46,7 +53,8 @@ api.get('/health', async (c) => {
 api.get('/init-db', async (c) => {
   try {
     const db = c.env.DB
-    await db.exec(`CREATE TABLE IF NOT EXISTS users (
+    
+    await db.prepare(`CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL,
@@ -55,8 +63,9 @@ api.get('/init-db', async (c) => {
       role TEXT DEFAULT 'READER',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
-    )`)
-    await db.exec(`CREATE TABLE IF NOT EXISTS writing_style (
+    )`).run()
+    
+    await db.prepare(`CREATE TABLE IF NOT EXISTS writing_style (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
       name TEXT NOT NULL,
@@ -70,8 +79,9 @@ api.get('/init-db', async (c) => {
       is_default INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id)
-    )`)
-    await db.exec(`CREATE TABLE IF NOT EXISTS novel (
+    )`).run()
+    
+    await db.prepare(`CREATE TABLE IF NOT EXISTS novel (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
       title TEXT NOT NULL,
@@ -87,8 +97,9 @@ api.get('/init-db', async (c) => {
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id)
-    )`)
-    await db.exec(`CREATE TABLE IF NOT EXISTS chapter (
+    )`).run()
+    
+    await db.prepare(`CREATE TABLE IF NOT EXISTS chapter (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       novel_id INTEGER NOT NULL,
       chapter_number INTEGER NOT NULL,
@@ -100,8 +111,9 @@ api.get('/init-db', async (c) => {
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (novel_id) REFERENCES novel(id)
-    )`)
-    await db.exec(`CREATE TABLE IF NOT EXISTS model_provider (
+    )`).run()
+    
+    await db.prepare(`CREATE TABLE IF NOT EXISTS model_provider (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
       provider_name TEXT NOT NULL,
@@ -113,21 +125,24 @@ api.get('/init-db', async (c) => {
       sort_order INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id)
-    )`)
-    await db.exec(`CREATE TABLE IF NOT EXISTS follows (
+    )`).run()
+    
+    await db.prepare(`CREATE TABLE IF NOT EXISTS follows (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       follower_id INTEGER NOT NULL,
       following_id INTEGER NOT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(follower_id, following_id)
-    )`)
-    await db.exec(`CREATE TABLE IF NOT EXISTS bookmark (
+    )`).run()
+    
+    await db.prepare(`CREATE TABLE IF NOT EXISTS bookmark (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
       novel_id INTEGER NOT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       UNIQUE(user_id, novel_id)
-    )`)
+    )`).run()
+    
     return c.json({ code: 200, message: '数据库初始化成功' })
   } catch(e) {
     return c.json({ code: 500, message: e.message }, 500)
@@ -211,7 +226,7 @@ api.post('/auth/login', async (c) => {
     const { username, password } = await c.req.json()
     const db = c.env.DB
     const user = await db.prepare('SELECT * FROM users WHERE username=?').bind(username).first()
-    if (!user || user.password !== hash(password)) return c.json({ code: 400, message: '用户名或密码错误' })
+    if (!user || !(await verifyHash(password, user.password))) return c.json({ code: 400, message: '用户名或密码错误' })
     const token = await sign({ userId: user.id, username: user.username, role: user.role }, JWT_SECRET)
     return c.json({ code: 200, data: { token, userId: user.id, username: user.username, nickname: user.nickname, role: user.role } })
   } catch(e) { return c.json({ code: 400, message: e.message }) }
