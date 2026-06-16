@@ -588,21 +588,34 @@ api.post('/ai/generate-outline', auth, async (c) => {
     if (isDashScope) {
       let baseUrl = provider.base_url
       if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1)
+      
+      // 如果URL包含/compatible，使用OpenAI兼容模式
       if (baseUrl.includes('/compatible')) {
-        baseUrl = baseUrl.replace(/\/compatible\/?.*$/, '')
-      }
-      aiUrl = baseUrl + '/services/aigc/text-generation/generation'
-      aiRequest = {
-        model: provider.model_name,
-        input: {
+        aiUrl = baseUrl + '/chat/completions'
+        aiRequest = {
+          model: provider.model_name,
           messages: [
             { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
             { role: 'user', content: finalPrompt }
-          ]
-        },
-        parameters: {
+          ],
           temperature: 0.7,
           max_tokens: 4096
+        }
+      } else {
+        // 使用DashScope原生API
+        aiUrl = baseUrl + '/services/aigc/text-generation/generation'
+        aiRequest = {
+          model: provider.model_name,
+          input: {
+            messages: [
+              { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
+              { role: 'user', content: finalPrompt }
+            ]
+          },
+          parameters: {
+            temperature: 0.7,
+            max_tokens: 4096
+          }
         }
       }
     } else {
