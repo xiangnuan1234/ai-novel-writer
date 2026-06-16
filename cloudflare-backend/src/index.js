@@ -644,6 +644,7 @@ api.post('/ai/generate-outline', auth, async (c) => {
 
     let aiRequest, aiUrl
     const isDashScope = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyuncs')
+    const isModelScope = provider.base_url.includes('modelscope')
     
     // 构建API地址
     if (isDashScope) {
@@ -654,9 +655,16 @@ api.post('/ai/generate-outline', auth, async (c) => {
       aiUrl = (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
     }
     
+    // 处理模型名称格式
+    let modelName = provider.model_name
+    if (isModelScope && !modelName.includes('/')) {
+      // 魔搭社区需要完整模型ID：用户名/模型名
+      modelName = 'qwen/' + modelName
+    }
+    
     // 构建请求体（通用格式）
     aiRequest = {
-      model: provider.model_name,
+      model: modelName,
       messages: [
         { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
         { role: 'user', content: finalPrompt }
