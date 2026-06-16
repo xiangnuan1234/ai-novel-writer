@@ -295,15 +295,15 @@ const handleGenerateOutline = async () => {
     })
     if (res.code === 200) {
       showOutlineDialog.value = false
-      // res.data 现在是 Chapter 对象，content 是大纲内容
-      const outlineText = res.data.content || JSON.stringify(res.data)
+      // 后端返回 { novelId, outline, wordCount }
+      const outlineText = res.data.outline || '大纲生成失败'
       ElMessageBox.alert(outlineText, 'AI 生成的大纲', {
         confirmButtonText: '知道了',
         width: '700px'
       })
-      // 刷新章节列表
-      const chRes = await chapterApi.list(novelId)
-      if (chRes.code === 200) chapters.value = chRes.data
+      // 更新小说信息（大纲保存在novel表中）
+      const novelRes = await novelApi.get(novelId)
+      if (novelRes.code === 200) novel.value = novelRes.data
     }
   } catch (e) {
     console.error(e)
