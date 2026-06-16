@@ -643,11 +643,15 @@ api.post('/ai/generate-outline', auth, async (c) => {
     }
 
     let aiRequest, aiUrl
-    const isDashScope = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyun')
+    const isDashScope = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyuncs')
+    const isModelScope = provider.base_url.includes('modelscope')
     
     if (isDashScope) {
       // DashScope 使用正确的兼容模式地址
       aiUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+    } else if (isModelScope) {
+      // 魔搭社区API
+      aiUrl = provider.base_url + '/chat/completions'
       aiRequest = {
         model: provider.model_name,
         messages: [
