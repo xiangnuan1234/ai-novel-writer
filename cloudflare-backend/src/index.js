@@ -524,6 +524,54 @@ api.get('/uploads/covers/:name', async (c) => {
   return new Response(obj.body, { headers: { 'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000' } })
 })
 
+// ========== AI 测试接口 ==========
+api.post('/ai/test', auth, async (c) => {
+  try {
+    const uid = c.get('jwtPayload').userId
+    const db = c.env.DB
+    const provider = await db.prepare('SELECT * FROM model_provider WHERE user_id=? AND is_default=1 LIMIT 1').bind(uid).first()
+    if (!provider) return c.json({ code: 400, message: '请先配置模型服务商' })
+
+    const headers = { 'Content-Type': 'application/json' }
+    if (provider.api_key) headers['Authorization'] = `Bearer ${provider.api_key}`
+
+    // 尝试多个可能的API地址
+    const urls = []
+    const baseUrl = provider.base_url.replace(/\/$/, '')
+    
+    if (baseUrl.includes('dashscope') || baseUrl.includes('aliyun')) {
+      // DashScope 可能的地址
+      urls.push({ url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', type: 'DashScope兼容模式1' })
+      urls.push({ url: baseUrl + '/chat/completions', type: '用户配置的地址' })
+    } else {
+      urls.push({ url: baseUrl + '/chat/completions', type: '用户配置的地址' })
+    }
+
+    const results = []
+    for (const { url, type } of urls) {
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: provider.model_name,
+            messages: [{ role: 'user', content: '你好，请回复"测试成功"' }],
+            max_tokens: 50
+          })
+        })
+        const text = await resp.text()
+        results.push({ type, url, status: resp.status, body: text.substring(0, 300) })
+        if (resp.ok) break
+      } catch(e) {
+        results.push({ type, url, error: e.message })
+      }
+    }
+    return c.json({ code: 200, data: { provider: provider.provider_name, model: provider.model_name, results } })
+  } catch(e) {
+    return c.json({ code: 500, message: e.message })
+  }
+})
+
 // ========== AI 生成（透传） ==========
 api.post('/ai/generate-outline', auth, async (c) => {
   let chapterId = null
@@ -586,40 +634,19 @@ api.post('/ai/generate-outline', auth, async (c) => {
     const isDashScope = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyun')
     
     if (isDashScope) {
-      let baseUrl = provider.base_url
-      if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1)
-      
-      // 如果URL包含/compatible，使用OpenAI兼容模式
-      if (baseUrl.includes('/compatible')) {
-        aiUrl = baseUrl + '/chat/completions'
-        aiRequest = {
-          model: provider.model_name,
-          messages: [
-            { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
-            { role: 'user', content: finalPrompt }
-          ],
-          temperature: 0.7,
-          max_tokens: 4096
-        }
-      } else {
-        // 使用DashScope原生API
-        aiUrl = baseUrl + '/services/aigc/text-generation/generation'
-        aiRequest = {
-          model: provider.model_name,
-          input: {
-            messages: [
-              { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
-              { role: 'user', content: finalPrompt }
-            ]
-          },
-          parameters: {
-            temperature: 0.7,
-            max_tokens: 4096
-          }
-        }
+      // DashScope 使用正确的兼容模式地址
+      aiUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+      aiRequest = {
+        model: provider.model_name,
+        messages: [
+          { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
+          { role: 'user', content: finalPrompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 4096
       }
     } else {
-      aiUrl = provider.base_url + '/chat/completions'
+      aiUrl = (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
       aiRequest = {
         model: provider.model_name,
         messages: [
