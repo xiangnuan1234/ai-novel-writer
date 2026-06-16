@@ -536,7 +536,80 @@ api.get('/uploads/covers/:name', async (c) => {
   return new Response(obj.body, { headers: { 'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg', 'Cache-Control': 'public, max-age=31536000' } })
 })
 
-// ========== AI 测试接口 ==========
+// ========== AI 公开测试接口 ==========
+api.get('/ai/test', async (c) => {
+  try {
+    const providers = await db.prepare('SELECT * FROM providers WHERE is_default = 1 LIMIT 1').all()
+    if (!providers.results.length) {
+      return c.json({ code: 400, message: '请先配置默认模型服务商' })
+    }
+    
+    const provider = providers.results[0]
+    const headers = {
+      'Content-Type': 'application/json'
+    }
+    
+    if (provider.api_key && provider.api_key.trim()) {
+      headers['Authorization'] = `Bearer ${provider.api_key}`
+    }
+    
+    const isDashScope = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyuncs')
+    const isModelScope = provider.base_url.includes('modelscope')
+    
+    let aiUrl
+    if (isDashScope) {
+      aiUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+    } else if (isModelScope) {
+      aiUrl = 'https://api-inference.modelscope.cn/v1/chat/completions'
+    } else {
+      aiUrl = (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
+    }
+    
+    let modelName = provider.model_name
+    if (isModelScope && !modelName.includes('/')) {
+      modelName = 'qwen/' + modelName
+    }
+    
+    const aiRequest = {
+      model: modelName,
+      messages: [
+        { role: 'user', content: '你好' }
+      ],
+      temperature: 0.7,
+      max_tokens: 100
+    }
+    
+    const aiResp = await fetch(aiUrl, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(aiRequest)
+    })
+    
+    const aiJson = await aiResp.json()
+    
+    if (!aiResp.ok) {
+      return c.json({ 
+        code: 500, 
+        message: 'AI服务调用失败',
+        status: aiResp.status,
+        error: aiJson 
+      })
+    }
+    
+    return c.json({ 
+      code: 200, 
+      message: 'AI服务连接成功',
+      provider: provider.name,
+      model: modelName,
+      response: aiJson
+    })
+  } catch (error) {
+    console.error('AI测试错误:', error)
+    return c.json({ code: 500, message: '测试失败: ' + error.message })
+  }
+})
+
+// ========== AI 测试接口（需要认证）==========
 api.post('/ai/test', auth, async (c) => {
   try {
     const uid = c.get('jwtPayload').userId
