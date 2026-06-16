@@ -650,10 +650,16 @@ api.post('/ai/generate-outline', auth, async (c) => {
       // DashScope 使用正确的兼容模式地址
       aiUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
     } else if (isModelScope) {
-      // 魔搭社区API
+      // 魔搭社区API - 需要使用完整的模型ID
       aiUrl = provider.base_url + '/chat/completions'
+      // 魔搭社区模型名称格式: 用户名/模型名
+      let modelName = provider.model_name
+      if (!modelName.includes('/')) {
+        // 如果没有斜杠，添加默认用户名
+        modelName = 'qwen/' + provider.model_name
+      }
       aiRequest = {
-        model: provider.model_name,
+        model: modelName,
         messages: [
           { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
           { role: 'user', content: finalPrompt }
