@@ -492,7 +492,7 @@ api.post('/ai/generate-outline', auth, async (c) => {
     const db = c.env.DB
     const novel = await db.prepare('SELECT * FROM novel WHERE id=?').bind(novelId).first()
     if (!novel) return c.json({ code: 400, message: '小说不存在' })
-    // 创建大纲章节
+    
     const max = await db.prepare('SELECT MAX(chapter_number) as m FROM chapter WHERE novel_id=?').bind(novelId).first()
     const num = (max?.m||0) + 1
     const title = `【大纲】${novel.title}`
@@ -500,7 +500,6 @@ api.post('/ai/generate-outline', auth, async (c) => {
       'INSERT INTO chapter(novel_id,chapter_number,title,content) VALUES(?,?,?,?)'
     ).bind(novelId, num, title, 'AI 生成中...').run()
 
-    // 调用 AI（同步生成）
     let provider = await db.prepare('SELECT * FROM model_provider WHERE id=?').bind(providerId||1).first()
     if (!provider) {
       const def = await db.prepare('SELECT * FROM model_provider WHERE is_default=1 LIMIT 1').first()
@@ -508,24 +507,44 @@ api.post('/ai/generate-outline', auth, async (c) => {
       provider = def
     }
 
+    const finalPrompt = prompt || `请为小说《${novel.title}》生成详细大纲，包含故事背景、主要人物、章节梗概等内容。`
+    
+    const headers = { 'Content-Type': 'application/json' }
+    if (provider.api_key) {
+      headers['Authorization'] = `Bearer ${provider.api_key}`
+    }
+
     const aiResp = await fetch(provider.base_url + '/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${provider.api_key}` },
+      headers: headers,
       body: JSON.stringify({
         model: provider.model_name,
-        messages: [{ role: 'user', content: prompt || '请为小说生成详细大纲' }],
-        temperature: 0.8, max_tokens: 4096
-      })
+        messages: [{ role: 'user', content: finalPrompt }],
+        temperature: 0.8,
+        max_tokens: 4096
+      }),
+      timeout: 60000
     })
-    const aiJson = await aiResp.json()
-    const content = aiJson?.choices?.[0]?.message?.content || '大纲生成失败'
 
-    await db.prepare('UPDATE chapter SET content=?,word_count=? WHERE id=?').bind(content, content.length, result.meta.last_row_id).run()
-    await db.prepare('UPDATE novel SET chapter_count=chapter_count+1 WHERE id=?').bind(novelId).run()
+    if (!aiResp.ok) {
+      const errorText = await aiResp.text()
+      console.error('AI API Error:', aiResp.status, errorText)
+      await db.prepare('UPDATE chapter SET content=? WHERE id=?').bind(`API调用失败: ${aiResp.status} - ${errorText}`, result.meta.last_row_id).run()
+      return c.json({ code: 500, message: `AI服务调用失败: ${aiResp.status}` })
+    }
+
+    const aiJson = await aiResp.json()
+    const content = aiJson?.choices?.[0]?.message?.content || aiJson?.result || '大纲生成失败'
+
+    await db.prepare('UPDATE chapter SET content=?,word_count=? WHERE id=?').bind(content, content.replace(/\s/g,'').length, result.meta.last_row_id).run()
+    await db.prepare('UPDATE novel SET chapter_count=chapter_count+1,updated_at=? WHERE id=?').bind(now(), novelId).run()
 
     const chapter = await db.prepare('SELECT * FROM chapter WHERE id=?').bind(result.meta.last_row_id).first()
     return c.json({ code: 200, data: chapter })
-  } catch(e) { return c.json({ code: 400, message: e.message }) }
+  } catch(e) { 
+    console.error('AI生成错误:', e.message, e.stack)
+    return c.json({ code: 500, message: `生成失败: ${e.message}` }) 
+  }
 })
 
 // 模型服务商列表
