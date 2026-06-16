@@ -757,7 +757,8 @@ api.post('/ai/generate-outline', auth, async (c) => {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(aiRequest),
-      keepalive: true
+      keepalive: true,
+      signal: AbortSignal.timeout(120000)
     })
 
     console.log('AI响应状态:', aiResp.status)
