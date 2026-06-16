@@ -336,14 +336,43 @@ api.get('/novel/:id', auth, async (c) => {
 
 // 更新小说
 api.put('/novel/:id', auth, async (c) => {
-  const uid = c.get('jwtPayload').userId
-  const { title, description, genre, status, coverImage, tags } = await c.req.json()
-  const db = c.env.DB
-  await db.prepare(
-    'UPDATE novel SET title=COALESCE(?,title),description=COALESCE(?,description),genre=COALESCE(?,genre),status=COALESCE(?,status),cover_image=COALESCE(?,cover_image),tags=COALESCE(?,tags),updated_at=? WHERE id=? AND user_id=?'
-  ).bind(title, description, genre, status, coverImage, tags, now(), c.req.param('id'), uid).run()
-  const novel = await db.prepare('SELECT * FROM novel WHERE id=?').bind(c.req.param('id')).first()
-  return c.json({ code: 200, data: novel })
+  try {
+    const uid = c.get('jwtPayload').userId
+    const { title, description, genre, status, coverImage, tags } = await c.req.json()
+    const db = c.env.DB
+    const novel = await db.prepare('SELECT * FROM novel WHERE id=? AND user_id=?').bind(c.req.param('id'), uid).first()
+    if (!novel) return c.json({ code: 400, message: '无权操作' })
+    
+    await db.prepare(
+      'UPDATE novel SET title=COALESCE(?,title),description=COALESCE(?,description),genre=COALESCE(?,genre),status=COALESCE(?,status),cover_image=COALESCE(?,cover_image),tags=COALESCE(?,tags),updated_at=? WHERE id=?'
+    ).bind(title, description, genre, status, coverImage, tags, now(), c.req.param('id')).run()
+    
+    const updated = await db.prepare('SELECT * FROM novel WHERE id=?').bind(c.req.param('id')).first()
+    return c.json({ code: 200, data: {...updated, chapterCount: updated.chapter_count} })
+  } catch(e) {
+    console.error('更新小说错误:', e.message)
+    return c.json({ code: 500, message: e.message })
+  }
+})
+
+// 发布小说
+api.put('/reader/novel/:id/publish', auth, async (c) => {
+  try {
+    const uid = c.get('jwtPayload').userId
+    const { isPublished } = await c.req.json()
+    const db = c.env.DB
+    
+    const novel = await db.prepare('SELECT * FROM novel WHERE id=? AND user_id=?').bind(c.req.param('id'), uid).first()
+    if (!novel) return c.json({ code: 400, message: '无权操作' })
+    
+    await db.prepare('UPDATE novel SET is_published=?, updated_at=? WHERE id=?').bind(isPublished ? 1 : 0, now(), c.req.param('id')).run()
+    
+    const updated = await db.prepare('SELECT * FROM novel WHERE id=?').bind(c.req.param('id')).first()
+    return c.json({ code: 200, data: {...updated, chapterCount: updated.chapter_count} })
+  } catch(e) {
+    console.error('发布小说错误:', e.message)
+    return c.json({ code: 500, message: e.message })
+  }
 })
 
 // 删除小说
