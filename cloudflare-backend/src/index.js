@@ -622,39 +622,56 @@ api.post('/ai/test', auth, async (c) => {
     const headers = { 'Content-Type': 'application/json' }
     if (provider.api_key) headers['Authorization'] = `Bearer ${provider.api_key}`
 
-    // 尝试多个可能的API地址
-    const urls = []
+    // 根据服务商类型选择正确的API地址
     const baseUrl = provider.base_url.replace(/\/$/, '')
+    const isModelScope = baseUrl.includes('modelscope')
+    const isDashScope = baseUrl.includes('dashscope') || baseUrl.includes('aliyun')
     
-    if (baseUrl.includes('dashscope') || baseUrl.includes('aliyun')) {
-      // DashScope 可能的地址
-      urls.push({ url: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', type: 'DashScope兼容模式1' })
-      urls.push({ url: baseUrl + '/chat/completions', type: '用户配置的地址' })
+    let testUrl
+    if (isModelScope) {
+      // 魔搭社区使用API-Inference地址
+      testUrl = 'https://api-inference.modelscope.cn/v1/chat/completions'
+    } else if (isDashScope) {
+      // DashScope使用兼容模式地址
+      testUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
     } else {
-      urls.push({ url: baseUrl + '/chat/completions', type: '用户配置的地址' })
+      // 其他服务商使用用户配置的地址
+      testUrl = baseUrl + '/chat/completions'
     }
 
-    const results = []
-    for (const { url, type } of urls) {
-      try {
-        const resp = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            model: provider.model_name,
-            messages: [{ role: 'user', content: '你好，请回复"测试成功"' }],
-            max_tokens: 50
-          })
-        })
-        const text = await resp.text()
-        results.push({ type, url, status: resp.status, body: text.substring(0, 300) })
-        if (resp.ok) break
-      } catch(e) {
-        results.push({ type, url, error: e.message })
-      }
+    // 处理模型名称
+    let modelName = provider.model_name
+    if (isModelScope && !modelName.includes('/')) {
+      modelName = 'qwen/' + modelName
     }
-    return c.json({ code: 200, data: { provider: provider.provider_name, model: provider.model_name, results } })
+
+    console.log('测试接口:', { testUrl, modelName, apiKey: provider.api_key ? '已配置' : '未配置' })
+
+    const resp = await fetch(testUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: modelName,
+        messages: [{ role: 'user', content: '你好，请回复"测试成功"' }],
+        max_tokens: 50
+      })
+    })
+    
+    const text = await resp.text()
+    console.log('API响应:', text.substring(0, 500))
+    
+    return c.json({ 
+      code: 200, 
+      data: { 
+        provider: provider.provider_name, 
+        model: modelName,
+        url: testUrl,
+        status: resp.status,
+        response: text.substring(0, 500)
+      } 
+    })
   } catch(e) {
+    console.error('测试接口错误:', e.message)
     return c.json({ code: 500, message: e.message })
   }
 })
