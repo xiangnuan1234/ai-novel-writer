@@ -710,13 +710,6 @@ api.post('/ai/generate-outline', auth, async (c) => {
 
     console.log('使用服务商:', provider.provider_name, provider.base_url, provider.model_name)
 
-    const finalPrompt = prompt || `请为小说《${novel.title}》生成详细大纲，包含：
-1. 故事背景设定
-2. 主要人物介绍
-3. 故事主线与冲突
-4. 章节梗概（建议10-20章）
-请用中文详细描述。`
-    
     const headers = { 'Content-Type': 'application/json' }
     if (provider.api_key && provider.api_key.trim()) {
       headers['Authorization'] = `Bearer ${provider.api_key}`
@@ -749,8 +742,8 @@ api.post('/ai/generate-outline', auth, async (c) => {
     aiRequest = {
       model: modelName,
       messages: [
-        { role: 'system', content: '你是一位专业的小说作家和编辑，精通创作各类小说大纲。你的任务是根据用户提供的小说名称和要求，直接生成详细的小说大纲。不要问候，不要寒暄，不要提问，不要反问，不要解释，直接输出大纲内容。' },
-        { role: 'user', content: finalPrompt }
+        { role: 'system', content: '你是小说大纲生成器。用户会给你小说名称，你需要直接输出小说大纲，格式如下：\n\n【故事背景】\n...\n\n【主要人物】\n...\n\n【故事主线】\n...\n\n【章节规划】\n第一章：...\n第二章：...\n...\n\n不要说"你好"，不要问问题，直接开始输出大纲。' },
+        { role: 'user', content: `小说名称：《${novel.title}》\n${novel.description ? `简介：${novel.description}` : ''}\n\n请生成这本小说的详细大纲。` }
       ],
       temperature: 0.7,
       max_tokens: 4096
@@ -758,7 +751,6 @@ api.post('/ai/generate-outline', auth, async (c) => {
     
     console.log('AI请求URL:', aiUrl)
     console.log('AI请求数据:', JSON.stringify(aiRequest))
-    console.log('完整prompt内容:', finalPrompt)
     
     const aiResp = await fetch(aiUrl, {
       method: 'POST',
