@@ -582,19 +582,41 @@ api.post('/ai/generate-outline', auth, async (c) => {
       headers['Authorization'] = `Bearer ${provider.api_key}`
     }
 
-    const aiRequest = {
-      model: provider.model_name,
-      messages: [
-        { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
-        { role: 'user', content: finalPrompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 4096
+    let aiRequest, aiUrl
+    const isDashScope = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyun')
+    
+    if (isDashScope) {
+      aiUrl = provider.base_url + '/services/aigc/text-generation/generation'
+      aiRequest = {
+        model: provider.model_name,
+        input: {
+          messages: [
+            { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
+            { role: 'user', content: finalPrompt }
+          ]
+        },
+        parameters: {
+          temperature: 0.7,
+          max_tokens: 4096
+        }
+      }
+    } else {
+      aiUrl = provider.base_url + '/chat/completions'
+      aiRequest = {
+        model: provider.model_name,
+        messages: [
+          { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
+          { role: 'user', content: finalPrompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 4096
+      }
     }
     
+    console.log('AI请求URL:', aiUrl)
     console.log('AI请求数据:', JSON.stringify(aiRequest).substring(0, 500))
     
-    const aiResp = await fetch(provider.base_url + '/chat/completions', {
+    const aiResp = await fetch(aiUrl, {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(aiRequest),
@@ -617,6 +639,8 @@ api.post('/ai/generate-outline', auth, async (c) => {
     let content = '大纲生成失败'
     if (aiJson?.choices?.[0]?.message?.content) {
       content = aiJson.choices[0].message.content
+    } else if (aiJson?.output?.text) {
+      content = aiJson.output.text
     } else if (aiJson?.result) {
       content = aiJson.result
     } else if (aiJson?.output) {
