@@ -656,8 +656,20 @@ api.post('/ai/generate-outline', auth, async (c) => {
     await db.prepare('UPDATE novel SET chapter_count=chapter_count+1,updated_at=? WHERE id=?').bind(now(), novelId).run()
 
     const chapter = await db.prepare('SELECT * FROM chapter WHERE id=?').bind(chapterId).first()
-    console.log('大纲生成成功:', chapterId)
-    return c.json({ code: 200, data: chapter })
+    console.log('大纲生成成功:', chapterId, '内容长度:', content.length)
+    
+    return c.json({ code: 200, data: {
+      id: chapter.id,
+      novelId: chapter.novel_id,
+      chapterNumber: chapter.chapter_number,
+      title: chapter.title,
+      content: chapter.content,
+      outline: chapter.outline || '',
+      status: chapter.status || 'draft',
+      wordCount: chapter.word_count,
+      createdAt: chapter.created_at,
+      updatedAt: chapter.updated_at
+    } })
   } catch(e) { 
     console.error('AI生成错误:', e.message, e.stack)
     if (chapterId) {
