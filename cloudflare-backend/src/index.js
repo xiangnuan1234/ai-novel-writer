@@ -813,7 +813,9 @@ api.post('/ai/generate-outline', auth, async (c) => {
       content = `无法解析AI响应，请检查服务商配置。响应格式: ${JSON.stringify(Object.keys(aiJson || {})).substring(0, 100)}`
     }
 
-    await db.prepare('UPDATE chapter SET content=?,word_count=? WHERE id=?').bind(content, content.replace(/\s/g,'').length, chapterId).run()
+    // 计算字数（保留空白字符，统计所有字符）
+    const wordCount = content.length
+    await db.prepare('UPDATE chapter SET content=?,word_count=? WHERE id=?').bind(content, wordCount, chapterId).run()
     await db.prepare('UPDATE novel SET chapter_count=chapter_count+1,updated_at=? WHERE id=?').bind(now(), novelId).run()
 
     const chapter = await db.prepare('SELECT * FROM chapter WHERE id=?').bind(chapterId).first()
