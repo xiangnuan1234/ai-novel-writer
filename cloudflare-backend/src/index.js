@@ -644,34 +644,25 @@ api.post('/ai/generate-outline', auth, async (c) => {
 
     let aiRequest, aiUrl
     const isDashScope = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyuncs')
-    const isModelScope = provider.base_url.includes('modelscope')
     
+    // 构建API地址
     if (isDashScope) {
-      // DashScope 使用正确的兼容模式地址
+      // DashScope 使用兼容模式地址
       aiUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
-    } else if (isModelScope) {
-      // 魔搭社区API - 使用DashScope兼容模式地址
-      aiUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
-      aiRequest = {
-        model: provider.model_name,
-        messages: [
-          { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
-          { role: 'user', content: finalPrompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 4096
-      }
     } else {
+      // 其他模型：使用用户配置的地址（支持魔搭社区、自定义模型等）
       aiUrl = (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
-      aiRequest = {
-        model: provider.model_name,
-        messages: [
-          { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
-          { role: 'user', content: finalPrompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 4096
-      }
+    }
+    
+    // 构建请求体（通用格式）
+    aiRequest = {
+      model: provider.model_name,
+      messages: [
+        { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' },
+        { role: 'user', content: finalPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 4096
     }
     
     console.log('AI请求URL:', aiUrl)
