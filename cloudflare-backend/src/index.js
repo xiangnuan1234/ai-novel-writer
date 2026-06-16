@@ -364,20 +364,24 @@ api.get('/novel/:id', auth, async (c) => {
 api.put('/novel/:id', auth, async (c) => {
   try {
     const uid = c.get('jwtPayload').userId
-    const { title, description, genre, status, coverImage, tags } = await c.req.json()
+    const body = await c.req.json()
+    const { title, description, genre, status, coverImage, tags, styleId } = body
     const db = c.env.DB
+    
     const novel = await db.prepare('SELECT * FROM novel WHERE id=? AND user_id=?').bind(c.req.param('id'), uid).first()
     if (!novel) return c.json({ code: 400, message: '无权操作' })
     
+    console.log('更新小说参数:', JSON.stringify(body))
+    
     await db.prepare(
-      'UPDATE novel SET title=COALESCE(?,title),description=COALESCE(?,description),genre=COALESCE(?,genre),status=COALESCE(?,status),cover_image=COALESCE(?,cover_image),tags=COALESCE(?,tags),updated_at=? WHERE id=?'
-    ).bind(title, description, genre, status, coverImage, tags, now(), c.req.param('id')).run()
+      'UPDATE novel SET title=COALESCE(?,title),description=COALESCE(?,description),genre=COALESCE(?,genre),status=COALESCE(?,status),cover_image=COALESCE(?,cover_image),tags=COALESCE(?,tags),style_id=COALESCE(?,style_id),updated_at=? WHERE id=?'
+    ).bind(title, description, genre, status, coverImage, tags, styleId, now(), c.req.param('id')).run()
     
     const updated = await db.prepare('SELECT * FROM novel WHERE id=?').bind(c.req.param('id')).first()
     return c.json({ code: 200, data: {...updated, chapterCount: updated.chapter_count} })
   } catch(e) {
-    console.error('更新小说错误:', e.message)
-    return c.json({ code: 500, message: e.message })
+    console.error('更新小说错误:', e.message, e.stack)
+    return c.json({ code: 500, message: `更新失败: ${e.message}` })
   }
 })
 
@@ -524,9 +528,13 @@ api.get('/uploads/covers/:name', async (c) => {
 api.post('/ai/generate-outline', auth, async (c) => {
   try {
     const { novelId, providerId, prompt } = await c.req.json()
+    const uid = c.get('jwtPayload').userId
     const db = c.env.DB
-    const novel = await db.prepare('SELECT * FROM novel WHERE id=?').bind(novelId).first()
-    if (!novel) return c.json({ code: 400, message: '小说不存在' })
+    
+    console.log('AI生成大纲请求:', { novelId, providerId })
+    
+    const novel = await db.prepare('SELECT * FROM novel WHERE id=? AND user_id=?').bind(novelId, uid).first()
+    if (!novel) return c.json({ code: 400, message: '小说不存在或无权访问' })
     
     const max = await db.prepare('SELECT MAX(chapter_number) as m FROM chapter WHERE novel_id=?').bind(novelId).first()
     const num = (max?.m||0) + 1
@@ -535,41 +543,65 @@ api.post('/ai/generate-outline', auth, async (c) => {
       'INSERT INTO chapter(novel_id,chapter_number,title,content) VALUES(?,?,?,?)'
     ).bind(novelId, num, title, 'AI 生成中...').run()
 
-    let provider = await db.prepare('SELECT * FROM model_provider WHERE id=?').bind(providerId||1).first()
+    let provider = null
+    if (providerId) {
+      provider = await db.prepare('SELECT * FROM model_provider WHERE id=? AND user_id=?').bind(providerId, uid).first()
+    }
+    
     if (!provider) {
-      const def = await db.prepare('SELECT * FROM model_provider WHERE is_default=1 LIMIT 1').first()
-      if (!def) return c.json({ code: 400, message: '请先配置模型服务商' })
-      provider = def
+      provider = await db.prepare('SELECT * FROM model_provider WHERE user_id=? AND is_default=1 LIMIT 1').bind(uid).first()
+    }
+    
+    if (!provider) {
+      await db.prepare('UPDATE chapter SET content=? WHERE id=?').bind('错误：请先在"模型管理"中配置AI模型服务商', result.meta.last_row_id).run()
+      return c.json({ code: 400, message: '请先在"模型管理"中配置AI模型服务商' })
     }
 
-    const finalPrompt = prompt || `请为小说《${novel.title}》生成详细大纲，包含故事背景、主要人物、章节梗概等内容。`
+    const finalPrompt = prompt || `请为小说《${novel.title}》生成详细大纲，包含：
+1. 故事背景设定
+2. 主要人物介绍
+3. 故事主线与冲突
+4. 章节梗概（建议10-20章）
+请用中文详细描述。`
     
     const headers = { 'Content-Type': 'application/json' }
-    if (provider.api_key) {
+    if (provider.api_key && provider.api_key.trim()) {
       headers['Authorization'] = `Bearer ${provider.api_key}`
     }
 
+    console.log('调用AI服务:', provider.base_url, provider.model_name)
+    
     const aiResp = await fetch(provider.base_url + '/chat/completions', {
       method: 'POST',
       headers: headers,
       body: JSON.stringify({
         model: provider.model_name,
-        messages: [{ role: 'user', content: finalPrompt }],
-        temperature: 0.8,
+        messages: [{ role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。' }, { role: 'user', content: finalPrompt }],
+        temperature: 0.7,
         max_tokens: 4096
       }),
-      timeout: 60000
+      keepalive: true
     })
 
     if (!aiResp.ok) {
       const errorText = await aiResp.text()
       console.error('AI API Error:', aiResp.status, errorText)
-      await db.prepare('UPDATE chapter SET content=? WHERE id=?').bind(`API调用失败: ${aiResp.status} - ${errorText}`, result.meta.last_row_id).run()
+      const errorMsg = `AI服务调用失败 (${aiResp.status}): ${errorText.substring(0, 200)}`
+      await db.prepare('UPDATE chapter SET content=? WHERE id=?').bind(errorMsg, result.meta.last_row_id).run()
       return c.json({ code: 500, message: `AI服务调用失败: ${aiResp.status}` })
     }
 
     const aiJson = await aiResp.json()
-    const content = aiJson?.choices?.[0]?.message?.content || aiJson?.result || '大纲生成失败'
+    console.log('AI响应:', JSON.stringify(aiJson).substring(0, 500))
+    
+    let content = '大纲生成失败'
+    if (aiJson?.choices?.[0]?.message?.content) {
+      content = aiJson.choices[0].message.content
+    } else if (aiJson?.result) {
+      content = aiJson.result
+    } else if (aiJson?.output) {
+      content = aiJson.output
+    }
 
     await db.prepare('UPDATE chapter SET content=?,word_count=? WHERE id=?').bind(content, content.replace(/\s/g,'').length, result.meta.last_row_id).run()
     await db.prepare('UPDATE novel SET chapter_count=chapter_count+1,updated_at=? WHERE id=?').bind(now(), novelId).run()
