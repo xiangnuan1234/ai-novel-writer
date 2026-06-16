@@ -650,8 +650,11 @@ api.post('/ai/generate-outline', auth, async (c) => {
     if (isDashScope) {
       // DashScope 使用兼容模式地址
       aiUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+    } else if (isModelScope) {
+      // 魔搭社区API - 使用正确的API-Inference地址
+      aiUrl = 'https://api-inference.modelscope.cn/v1/chat/completions'
     } else {
-      // 其他模型：使用用户配置的地址（支持魔搭社区、自定义模型等）
+      // 其他模型：使用用户配置的地址（支持自定义模型等）
       aiUrl = (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
     }
     
