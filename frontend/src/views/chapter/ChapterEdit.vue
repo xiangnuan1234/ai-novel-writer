@@ -257,7 +257,8 @@ const handleStreamGenerate = async () => {
   streaming.value = true
 
   try {
-    const resp = await fetch('/api/ai/generate-chapter-stream', {
+    const apiBase = import.meta.env.VITE_API_URL || '/api'
+    const resp = await fetch(`${apiBase}/ai/generate-chapter-stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({
@@ -268,6 +269,11 @@ const handleStreamGenerate = async () => {
         outline: genForm.outline
       })
     })
+
+    if (!resp.ok) {
+      const errText = await resp.text()
+      throw new Error(errText || `请求失败 (${resp.status})`)
+    }
 
     const reader = resp.body.getReader()
     const decoder = new TextDecoder()

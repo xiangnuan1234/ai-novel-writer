@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS novel (
     status TEXT DEFAULT 'DRAFT',
     chapter_count INTEGER DEFAULT 0,
     word_count INTEGER DEFAULT 0,
-    is_published INTEGER DEFAULT 1,
+    is_published INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id)

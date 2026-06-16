@@ -49,6 +49,18 @@ api.get('/health', async (c) => {
   }
 })
 
+// 添加缺失的 is_published 列
+api.get('/add-published-column', async (c) => {
+  try {
+    const db = c.env.DB
+    await db.prepare(`ALTER TABLE novel ADD COLUMN IF NOT EXISTS is_published INTEGER DEFAULT 0`).run()
+    await db.prepare(`UPDATE novel SET is_published = 0 WHERE is_published IS NULL`).run()
+    return c.json({ code: 200, message: 'is_published 列添加成功' })
+  } catch(e) {
+    return c.json({ code: 500, message: e.message }, 500)
+  }
+})
+
 // 数据库初始化（仅用于首次部署）
 api.get('/init-db', async (c) => {
   try {
@@ -93,7 +105,7 @@ api.get('/init-db', async (c) => {
       status TEXT DEFAULT 'DRAFT',
       chapter_count INTEGER DEFAULT 0,
       word_count INTEGER DEFAULT 0,
-      is_published INTEGER DEFAULT 1,
+      is_published INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id)
@@ -720,8 +732,225 @@ api.post('/ai/generate-outline', auth, async (c) => {
     if (chapterId) {
       await c.env.DB.prepare('UPDATE chapter SET content=? WHERE id=?').bind(`生成失败: ${e.message}`, chapterId).run()
     }
-    return c.json({ code: 500, message: `生成失败: ${e.message}` }) 
+    return c.json({ code: 500, message: `生成失败: ${e.message}` })
   }
+})
+
+// AI 普通生成章节
+api.post('/ai/generate-chapter', auth, async (c) => {
+  try {
+    const { novelId, chapterId, providerId, outline, wordCount } = await c.req.json()
+    const uid = c.get('jwtPayload').userId
+    const db = c.env.DB
+
+    const novel = await db.prepare('SELECT * FROM novel WHERE id=? AND user_id=?').bind(novelId, uid).first()
+    if (!novel) return c.json({ code: 400, message: '小说不存在或无权访问' })
+
+    const chapter = await db.prepare('SELECT * FROM chapter WHERE id=? AND novel_id=?').bind(chapterId, novelId).first()
+    if (!chapter) return c.json({ code: 400, message: '章节不存在' })
+
+    let provider = null
+    if (providerId) {
+      provider = await db.prepare('SELECT * FROM model_provider WHERE id=? AND user_id=?').bind(providerId, uid).first()
+    }
+    if (!provider) {
+      provider = await db.prepare('SELECT * FROM model_provider WHERE user_id=? AND is_default=1 LIMIT 1').bind(uid).first()
+    }
+    if (!provider) return c.json({ code: 400, message: '请先配置AI模型服务商' })
+
+    let contextPrompt = outline ? `本章大纲：${outline}\n\n` : ''
+    const finalPrompt = `${contextPrompt}请为小说《${novel.title}》撰写第${chapter.chapter_number}章"${chapter.title}"。
+要求：${wordCount ? `字数约${wordCount}字。` : '字数约3000字。'}
+请用流畅的中文写作，保持故事连贯性，注重人物塑造和情节推进。`
+
+    const headers = { 'Content-Type': 'application/json' }
+    if (provider.api_key && provider.api_key.trim()) headers['Authorization'] = `Bearer ${provider.api_key}`
+
+    let aiUrl = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyun')
+      ? 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+      : (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
+
+    const aiResp = await fetch(aiUrl, {
+      method: 'POST', headers,
+      body: JSON.stringify({
+        model: provider.model_name,
+        messages: [
+          { role: 'system', content: '你是一位专业的小说作家，擅长创作高质量的中文小说内容。' },
+          { role: 'user', content: finalPrompt }
+        ],
+        temperature: 0.8,
+        max_tokens: Math.min(Math.ceil((wordCount || 3000) * 1.5), 8192)
+      }),
+      keepalive: true
+    })
+
+    if (!aiResp.ok) {
+      const errorText = await aiResp.text()
+      return c.json({ code: 500, message: `AI服务调用失败: ${aiResp.status}` })
+    }
+
+    const aiJson = await aiResp.json()
+    let content = aiJson?.choices?.[0]?.message?.content || aiJson?.output?.text || '生成失败'
+
+    const wc = content.replace(/\s/g, '').length
+    await db.prepare('UPDATE chapter SET content=?, word_count=?, status=? WHERE id=?').bind(content, wc, 'COMPLETED', chapterId).run()
+    await db.prepare('UPDATE novel SET updated_at=? WHERE id=?').bind(now(), novelId).run()
+
+    const updated = await db.prepare('SELECT * FROM chapter WHERE id=?').bind(chapterId).first()
+    return c.json({ code: 200, data: { id: updated.id, novelId: updated.novel_id, chapterNumber: updated.chapter_number, title: updated.title, content: updated.content, outline: updated.outline || '', status: updated.status, wordCount: updated.word_count, createdAt: updated.created_at, updatedAt: updated.updated_at } })
+  } catch(e) {
+    console.error('AI生成章节错误:', e.message)
+    return c.json({ code: 500, message: `生成失败: ${e.message}` })
+  }
+})
+
+// AI 续写
+api.post('/ai/continue-writing', auth, async (c) => {
+  try {
+    const { chapterId, providerId, previousContent, wordCount } = await c.req.json()
+    const uid = c.get('jwtPayload').userId
+    const db = c.env.DB
+
+    const chapter = await db.prepare('SELECT c.*, n.title, n.user_id FROM chapter c JOIN novel n ON c.novel_id=n.id WHERE c.id=?').bind(chapterId).first()
+    if (!chapter || chapter.user_id !== uid) return c.json({ code: 400, message: '无权操作' })
+
+    let provider = null
+    if (providerId) provider = await db.prepare('SELECT * FROM model_provider WHERE id=? AND user_id=?').bind(providerId, uid).first()
+    if (!provider) provider = await db.prepare('SELECT * FROM model_provider WHERE user_id=? AND is_default=1 LIMIT 1').bind(uid).first()
+    if (!provider) return c.json({ code: 400, message: '请先配置AI模型服务商' })
+
+    const context = (previousContent || chapter.content || '').slice(-3000)
+    const finalPrompt = `请续写小说《${chapter.title}》第${chapter.chapter_number}章"${chapter.title}"的内容。\n以下是前文内容：\n${context}\n\n请从以上内容继续往下写，保持风格一致。字数约${wordCount || 1000}字。`
+
+    const headers = { 'Content-Type': 'application/json' }
+    if (provider.api_key && provider.api_key.trim()) headers['Authorization'] = `Bearer ${provider.api_key}`
+
+    let aiUrl = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyun')
+      ? 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+      : (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
+
+    const aiResp = await fetch(aiUrl, {
+      method: 'POST', headers,
+      body: JSON.stringify({
+        model: provider.model_name,
+        messages: [
+          { role: 'system', content: '你是一位专业的小说作家，擅长续写高质量的中文小说内容。' },
+          { role: 'user', content: finalPrompt }
+        ],
+        temperature: 0.8,
+        max_tokens: Math.min(Math.ceil((wordCount || 1000) * 1.5), 8192)
+      }),
+      keepalive: true
+    })
+
+    if (!aiResp.ok) {
+      const errorText = await aiResp.text()
+      return c.json({ code: 500, message: `AI服务调用失败: ${aiResp.status}` })
+    }
+
+    const aiJson = await aiResp.json()
+    const continuation = aiJson?.choices?.[0]?.message?.content || aiJson?.output?.text || ''
+    return c.json({ code: 200, data: continuation })
+  } catch(e) {
+    console.error('AI续写错误:', e.message)
+    return c.json({ code: 500, message: `续写失败: ${e.message}` })
+  }
+})
+
+// AI 流式生成章节
+api.post('/ai/generate-chapter-stream', auth, async (c) => {
+  const { novelId, chapterId, providerId, outline, wordCount } = await c.req.json()
+  const uid = c.get('jwtPayload').userId
+  const db = c.env.DB
+
+  const novel = await db.prepare('SELECT * FROM novel WHERE id=? AND user_id=?').bind(novelId, uid).first()
+  if (!novel) return c.json({ code: 400, message: '小说不存在或无权访问' })
+
+  const chapter = await db.prepare('SELECT * FROM chapter WHERE id=? AND novel_id=?').bind(chapterId, novelId).first()
+  if (!chapter) return c.json({ code: 400, message: '章节不存在' })
+
+  let provider = null
+  if (providerId) provider = await db.prepare('SELECT * FROM model_provider WHERE id=? AND user_id=?').bind(providerId, uid).first()
+  if (!provider) provider = await db.prepare('SELECT * FROM model_provider WHERE user_id=? AND is_default=1 LIMIT 1').bind(uid).first()
+  if (!provider) return c.json({ code: 400, message: '请先配置AI模型服务商' })
+
+  let contextPrompt = outline ? `本章大纲：${outline}\n\n` : ''
+  const finalPrompt = `${contextPrompt}请为小说《${novel.title}》撰写第${chapter.chapter_number}章"${chapter.title}"。
+要求：${wordCount ? `字数约${wordCount}字。` : '字数约3000字。'}
+请用流畅的中文写作，保持故事连贯性，注重人物塑造和情节推进。`
+
+  const headers = { 'Content-Type': 'application/json' }
+  if (provider.api_key && provider.api_key.trim()) headers['Authorization'] = `Bearer ${provider.api_key}`
+
+  let aiUrl = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyun')
+    ? 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+    : (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
+
+  const aiResp = await fetch(aiUrl, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      model: provider.model_name,
+      messages: [
+        { role: 'system', content: '你是一位专业的小说作家，擅长创作高质量的中文小说内容。' },
+        { role: 'user', content: finalPrompt }
+      ],
+      temperature: 0.8,
+      max_tokens: Math.min(Math.ceil((wordCount || 3000) * 1.5), 8192),
+      stream: true
+    }),
+    keepalive: true
+  })
+
+  if (!aiResp.ok) {
+    const errorText = await aiResp.text()
+    return c.json({ code: 500, message: `AI服务调用失败: ${aiResp.status}` })
+  }
+
+  const { readable, writable } = new TransformStream()
+  const writer = writable.getWriter()
+  const encoder = new TextEncoder()
+
+  c.executionCtx.waitUntil((async () => {
+    let fullContent = ''
+    try {
+      const reader = aiResp.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6).trim()
+          if (data === '[DONE]') continue
+          try {
+            const parsed = JSON.parse(data)
+            const delta = parsed?.choices?.[0]?.delta?.content
+            if (delta) {
+              fullContent += delta
+              await writer.write(encoder.encode(`data:${delta}\n\n`))
+            }
+          } catch(e) { /* skip unparseable lines */ }
+        }
+      }
+      const wc = fullContent.replace(/\s/g, '').length
+      await db.prepare('UPDATE chapter SET content=?, word_count=?, status=? WHERE id=?').bind(fullContent, wc, 'COMPLETED', chapterId).run()
+      await db.prepare('UPDATE novel SET updated_at=? WHERE id=?').bind(now(), novelId).run()
+      await writer.write(encoder.encode('event:done\ndata:ok\n\n'))
+    } catch(e) {
+      console.error('流式生成错误:', e.message)
+      await writer.write(encoder.encode(`event:error\ndata:${e.message}\n\n`))
+    } finally {
+      await writer.close()
+    }
+  })())
+
+  return new Response(readable, {
+    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }
+  })
 })
 
 // 模型服务商列表
