@@ -232,43 +232,43 @@ api.post('/auth/login', async (c) => {
   } catch(e) { return c.json({ code: 400, message: e.message }) }
 })
 
-// 读者大厅 - 浏览
+// 读者大厅 - 浏览（只显示已发布的小说）
 api.get('/reader/browse', async (c) => {
   const db = c.env.DB
   const novels = await db.prepare(
-    'SELECT n.*, u.nickname as author_name FROM novel n JOIN users u ON n.user_id=u.id WHERE n.is_published=1 OR n.is_published IS NULL ORDER BY n.updated_at DESC LIMIT 50'
+    'SELECT n.*, u.nickname as author_name FROM novel n JOIN users u ON n.user_id=u.id WHERE n.is_published=1 ORDER BY n.updated_at DESC LIMIT 50'
   ).all()
   return c.json({ code: 200, data: novels.results.map(n => ({...n, authorName: n.author_name, chapterCount: n.chapter_count })) })
 })
 
-// 搜索
+// 搜索（只搜索已发布的小说）
 api.get('/reader/search', async (c) => {
   const q = c.req.query('q') || ''
   const db = c.env.DB
   const novels = await db.prepare(
     `SELECT n.*, u.nickname as author_name FROM novel n JOIN users u ON n.user_id=u.id
-     WHERE (n.is_published=1 OR n.is_published IS NULL)
+     WHERE n.is_published=1
      AND (n.title LIKE ? OR n.description LIKE ? OR n.tags LIKE ? OR u.nickname LIKE ? OR u.username LIKE ?)
      ORDER BY n.updated_at DESC LIMIT 30`
   ).bind(`%${q}%`,`%${q}%`,`%${q}%`,`%${q}%`,`%${q}%`).all()
   return c.json({ code: 200, data: novels.results.map(n => ({...n, authorName: n.author_name, chapterCount: n.chapter_count })) })
 })
 
-// 分类浏览
+// 分类浏览（只显示已发布的小说）
 api.get('/reader/genre/:genre', async (c) => {
   const g = c.req.param('genre')
   const db = c.env.DB
   const novels = await db.prepare(
-    'SELECT n.*, u.nickname as author_name FROM novel n JOIN users u ON n.user_id=u.id WHERE (n.is_published=1 OR n.is_published IS NULL) AND n.genre=? ORDER BY updated_at DESC LIMIT 30'
+    'SELECT n.*, u.nickname as author_name FROM novel n JOIN users u ON n.user_id=u.id WHERE n.is_published=1 AND n.genre=? ORDER BY updated_at DESC LIMIT 30'
   ).bind(g).all()
   return c.json({ code: 200, data: novels.results.map(n => ({...n, authorName: n.author_name, chapterCount: n.chapter_count })) })
 })
 
-// 分类列表
+// 分类列表（只显示已发布小说的分类）
 api.get('/reader/genres', async (c) => {
   try {
     const db = c.env.DB
-    const rows = await db.prepare('SELECT DISTINCT genre FROM novel WHERE genre IS NOT NULL AND (is_published=1 OR is_published IS NULL)').all()
+    const rows = await db.prepare('SELECT DISTINCT genre FROM novel WHERE genre IS NOT NULL AND is_published=1').all()
     if (!rows || !rows.results) {
       return c.json({ code: 200, data: [] })
     }
@@ -299,11 +299,17 @@ api.put('/reader/novel/:id/publish', auth, async (c) => {
   }
 })
 
-// 小说详情（公开）
+// 小说详情（公开只能看已发布的，作者可以看自己所有的）
 api.get('/reader/novel/:id', async (c) => {
   const db = c.env.DB
   const novel = await db.prepare('SELECT * FROM novel WHERE id=?').bind(c.req.param('id')).first()
   if (!novel) return c.json({ code: 400, message: '小说不存在' })
+  
+  // 未发布的小说只有作者能看
+  if (novel.is_published !== 1) {
+    return c.json({ code: 400, message: '小说未发布，暂不可查看' })
+  }
+  
   const chapters = await db.prepare('SELECT * FROM chapter WHERE novel_id=? ORDER BY chapter_number').bind(novel.id).all()
   return c.json({ code: 200, data: { novel: {...novel, chapterCount: novel.chapter_count}, chapters: chapters.results.filter(ch => !ch.title?.includes('大纲')) } })
 })
