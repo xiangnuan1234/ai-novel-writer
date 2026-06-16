@@ -732,7 +732,7 @@ api.post('/ai/generate-outline', auth, async (c) => {
     aiRequest = {
       model: modelName,
       messages: [
-        { role: 'system', content: '你是一位专业的小说作家和编辑，擅长创作各种类型的小说大纲。请直接根据用户提供的信息生成详细大纲，不要提问，不要反问，直接输出结果。' },
+        { role: 'system', content: '你是一位专业的小说作家和编辑，精通创作各类小说大纲。你的任务是根据用户提供的小说名称和要求，直接生成详细的小说大纲。不要问候，不要寒暄，不要提问，不要反问，不要解释，直接输出大纲内容。' },
         { role: 'user', content: finalPrompt }
       ],
       temperature: 0.7,
@@ -740,7 +740,8 @@ api.post('/ai/generate-outline', auth, async (c) => {
     }
     
     console.log('AI请求URL:', aiUrl)
-    console.log('AI请求数据:', JSON.stringify(aiRequest).substring(0, 500))
+    console.log('AI请求数据:', JSON.stringify(aiRequest))
+    console.log('完整prompt内容:', finalPrompt)
     
     const aiResp = await fetch(aiUrl, {
       method: 'POST',
