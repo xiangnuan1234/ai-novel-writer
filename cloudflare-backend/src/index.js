@@ -586,7 +586,12 @@ api.post('/ai/generate-outline', auth, async (c) => {
     const isDashScope = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyun')
     
     if (isDashScope) {
-      aiUrl = provider.base_url + '/services/aigc/text-generation/generation'
+      let baseUrl = provider.base_url
+      if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1)
+      if (baseUrl.includes('/compatible')) {
+        baseUrl = baseUrl.replace(/\/compatible\/?.*$/, '')
+      }
+      aiUrl = baseUrl + '/services/aigc/text-generation/generation'
       aiRequest = {
         model: provider.model_name,
         input: {
