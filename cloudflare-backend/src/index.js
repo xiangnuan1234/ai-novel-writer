@@ -817,7 +817,7 @@ api.post('/ai/generate-outline', auth, async (c) => {
   }
 })
 
-// AI 普通生成章节
+// AI 普通生成章节（带记忆功能）
 api.post('/ai/generate-chapter', auth, async (c) => {
   try {
     const { novelId, chapterId, providerId, outline, wordCount } = await c.req.json()
@@ -839,10 +839,57 @@ api.post('/ai/generate-chapter', auth, async (c) => {
     }
     if (!provider) return c.json({ code: 400, message: '请先配置AI模型服务商' })
 
-    let contextPrompt = outline ? `本章大纲：${outline}\n\n` : ''
+    // 构建上下文：小说信息 + 大纲 + 前文内容
+    let contextPrompt = ''
+    
+    // 1. 小说基本信息
+    if (novel.description || novel.genre || novel.tags) {
+      contextPrompt += `【小说信息】\n`
+      if (novel.genre) contextPrompt += `类型：${novel.genre}\n`
+      if (novel.tags) contextPrompt += `标签：${novel.tags}\n`
+      if (novel.description) contextPrompt += `简介：${novel.description}\n`
+      contextPrompt += '\n'
+    }
+    
+    // 2. 小说大纲（如果有）
+    if (novel.outline) {
+      // 只取大纲的前1000字，避免token过多
+      const outlinePreview = novel.outline.length > 1000 ? novel.outline.substring(0, 1000) + '...' : novel.outline
+      contextPrompt += `【小说大纲】\n${outlinePreview}\n\n`
+    }
+    
+    // 3. 前文内容（获取前一章或前几章的结尾部分）
+    const prevChapters = await db.prepare(
+      'SELECT content FROM chapter WHERE novel_id=? AND chapter_number<? ORDER BY chapter_number DESC LIMIT 2'
+    ).bind(novelId, chapter.chapter_number).all()
+    
+    if (prevChapters.results && prevChapters.results.length > 0) {
+      let previousContent = ''
+      prevChapters.results.reverse().forEach(ch => {
+        if (ch.content && ch.content.length > 0) {
+          // 每章只取最后500字
+          const endPart = ch.content.length > 500 ? ch.content.substring(ch.content.length - 500) : ch.content
+          previousContent += endPart + '\n'
+        }
+      })
+      // 总上下文限制在1500字以内
+      if (previousContent.length > 1500) {
+        previousContent = previousContent.substring(previousContent.length - 1500)
+      }
+      if (previousContent.trim()) {
+        contextPrompt += `【前文回顾】\n${previousContent}\n\n`
+      }
+    }
+    
+    // 4. 本章大纲（如果有）
+    if (outline) {
+      contextPrompt += `【本章大纲】\n${outline}\n\n`
+    }
+    
+    // 最终prompt
     const finalPrompt = `${contextPrompt}请为小说《${novel.title}》撰写第${chapter.chapter_number}章"${chapter.title}"。
 要求：${wordCount ? `字数约${wordCount}字。` : '字数约3000字。'}
-请用流畅的中文写作，保持故事连贯性，注重人物塑造和情节推进。`
+请保持与前文风格一致，注意故事连贯性和人物性格的一致性。`
 
     const headers = { 'Content-Type': 'application/json' }
     if (provider.api_key && provider.api_key.trim()) headers['Authorization'] = `Bearer ${provider.api_key}`
@@ -887,7 +934,7 @@ api.post('/ai/generate-chapter', auth, async (c) => {
     const aiJson = await aiResp.json()
     let content = aiJson?.choices?.[0]?.message?.content || aiJson?.output?.text || '生成失败'
 
-    const wc = content.replace(/\s/g, '').length
+    const wc = content.length
     await db.prepare('UPDATE chapter SET content=?, word_count=?, status=? WHERE id=?').bind(content, wc, 'COMPLETED', chapterId).run()
     await db.prepare('UPDATE novel SET updated_at=? WHERE id=?').bind(now(), novelId).run()
 
@@ -906,7 +953,7 @@ api.post('/ai/continue-writing', auth, async (c) => {
     const uid = c.get('jwtPayload').userId
     const db = c.env.DB
 
-    const chapter = await db.prepare('SELECT c.*, n.title, n.user_id FROM chapter c JOIN novel n ON c.novel_id=n.id WHERE c.id=?').bind(chapterId).first()
+    const chapter = await db.prepare('SELECT c.*, n.title as novel_title, n.user_id, n.description, n.genre, n.tags, n.outline FROM chapter c JOIN novel n ON c.novel_id=n.id WHERE c.id=?').bind(chapterId).first()
     if (!chapter || chapter.user_id !== uid) return c.json({ code: 400, message: '无权操作' })
 
     let provider = null
@@ -914,8 +961,30 @@ api.post('/ai/continue-writing', auth, async (c) => {
     if (!provider) provider = await db.prepare('SELECT * FROM model_provider WHERE user_id=? AND is_default=1 LIMIT 1').bind(uid).first()
     if (!provider) return c.json({ code: 400, message: '请先配置AI模型服务商' })
 
-    const context = (previousContent || chapter.content || '').slice(-3000)
-    const finalPrompt = `请续写小说《${chapter.title}》第${chapter.chapter_number}章"${chapter.title}"的内容。\n以下是前文内容：\n${context}\n\n请从以上内容继续往下写，保持风格一致。字数约${wordCount || 1000}字。`
+    // 构建上下文
+    let contextPrompt = ''
+    
+    // 1. 小说基本信息
+    if (chapter.description || chapter.genre || chapter.tags) {
+      contextPrompt += `【小说信息】\n`
+      if (chapter.genre) contextPrompt += `类型：${chapter.genre}\n`
+      if (chapter.tags) contextPrompt += `标签：${chapter.tags}\n`
+      if (chapter.description) contextPrompt += `简介：${chapter.description}\n`
+      contextPrompt += '\n'
+    }
+    
+    // 2. 小说大纲（如果有）
+    if (chapter.outline) {
+      const outlinePreview = chapter.outline.length > 800 ? chapter.outline.substring(0, 800) + '...' : chapter.outline
+      contextPrompt += `【小说大纲】\n${outlinePreview}\n\n`
+    }
+    
+    // 3. 当前章节前文内容
+    const context = (previousContent || chapter.content || '').slice(-2000)
+    contextPrompt += `【前文内容】\n${context}\n\n`
+    
+    const finalPrompt = `${contextPrompt}请续写小说《${chapter.novel_title}》第${chapter.chapter_number}章的内容。
+请从以上内容继续往下写，保持风格一致，字数约${wordCount || 1000}字。`
 
     const headers = { 'Content-Type': 'application/json' }
     if (provider.api_key && provider.api_key.trim()) headers['Authorization'] = `Bearer ${provider.api_key}`
@@ -983,10 +1052,54 @@ api.post('/ai/generate-chapter-stream', auth, async (c) => {
   if (!provider) provider = await db.prepare('SELECT * FROM model_provider WHERE user_id=? AND is_default=1 LIMIT 1').bind(uid).first()
   if (!provider) return c.json({ code: 400, message: '请先配置AI模型服务商' })
 
-  let contextPrompt = outline ? `本章大纲：${outline}\n\n` : ''
+  // 构建上下文：小说信息 + 大纲 + 前文内容
+  let contextPrompt = ''
+  
+  // 1. 小说基本信息
+  if (novel.description || novel.genre || novel.tags) {
+    contextPrompt += `【小说信息】\n`
+    if (novel.genre) contextPrompt += `类型：${novel.genre}\n`
+    if (novel.tags) contextPrompt += `标签：${novel.tags}\n`
+    if (novel.description) contextPrompt += `简介：${novel.description}\n`
+    contextPrompt += '\n'
+  }
+  
+  // 2. 小说大纲（如果有）
+  if (novel.outline) {
+    const outlinePreview = novel.outline.length > 1000 ? novel.outline.substring(0, 1000) + '...' : novel.outline
+    contextPrompt += `【小说大纲】\n${outlinePreview}\n\n`
+  }
+  
+  // 3. 前文内容（获取前一章或前几章的结尾部分）
+  const prevChapters = await db.prepare(
+    'SELECT content FROM chapter WHERE novel_id=? AND chapter_number<? ORDER BY chapter_number DESC LIMIT 2'
+  ).bind(novelId, chapter.chapter_number).all()
+  
+  if (prevChapters.results && prevChapters.results.length > 0) {
+    let previousContent = ''
+    prevChapters.results.reverse().forEach(ch => {
+      if (ch.content && ch.content.length > 0) {
+        const endPart = ch.content.length > 500 ? ch.content.substring(ch.content.length - 500) : ch.content
+        previousContent += endPart + '\n'
+      }
+    })
+    if (previousContent.length > 1500) {
+      previousContent = previousContent.substring(previousContent.length - 1500)
+    }
+    if (previousContent.trim()) {
+      contextPrompt += `【前文回顾】\n${previousContent}\n\n`
+    }
+  }
+  
+  // 4. 本章大纲（如果有）
+  if (outline) {
+    contextPrompt += `【本章大纲】\n${outline}\n\n`
+  }
+  
+  // 最终prompt
   const finalPrompt = `${contextPrompt}请为小说《${novel.title}》撰写第${chapter.chapter_number}章"${chapter.title}"。
 要求：${wordCount ? `字数约${wordCount}字。` : '字数约3000字。'}
-请用流畅的中文写作，保持故事连贯性，注重人物塑造和情节推进。`
+请保持与前文风格一致，注意故事连贯性和人物性格的一致性。`
 
   const headers = { 'Content-Type': 'application/json' }
   if (provider.api_key && provider.api_key.trim()) headers['Authorization'] = `Bearer ${provider.api_key}`
