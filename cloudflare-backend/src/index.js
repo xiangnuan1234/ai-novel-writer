@@ -102,6 +102,7 @@ api.get('/init-db', async (c) => {
       genre TEXT,
       tags TEXT,
       style_id INTEGER,
+      outline TEXT,
       status TEXT DEFAULT 'DRAFT',
       chapter_count INTEGER DEFAULT 0,
       word_count INTEGER DEFAULT 0,
@@ -377,7 +378,7 @@ api.put('/novel/:id', auth, async (c) => {
   try {
     const uid = c.get('jwtPayload').userId
     const body = await c.req.json()
-    const { title, description, genre, status, coverImage, tags, styleId } = body
+    const { title, description, genre, status, coverImage, tags, styleId, outline } = body
     const db = c.env.DB
     
     const novel = await db.prepare('SELECT * FROM novel WHERE id=? AND user_id=?').bind(c.req.param('id'), uid).first()
@@ -386,8 +387,8 @@ api.put('/novel/:id', auth, async (c) => {
     console.log('更新小说参数:', JSON.stringify(body))
     
     await db.prepare(
-      'UPDATE novel SET title=COALESCE(?,title),description=COALESCE(?,description),genre=COALESCE(?,genre),status=COALESCE(?,status),cover_image=COALESCE(?,cover_image),tags=COALESCE(?,tags),style_id=COALESCE(?,style_id),updated_at=? WHERE id=?'
-    ).bind(title, description, genre, status, coverImage, tags, styleId, now(), c.req.param('id')).run()
+      'UPDATE novel SET title=COALESCE(?,title),description=COALESCE(?,description),genre=COALESCE(?,genre),status=COALESCE(?,status),cover_image=COALESCE(?,cover_image),tags=COALESCE(?,tags),style_id=COALESCE(?,style_id),outline=COALESCE(?,outline),updated_at=? WHERE id=?'
+    ).bind(title, description, genre, status, coverImage, tags, styleId, outline, now(), c.req.param('id')).run()
     
     const updated = await db.prepare('SELECT * FROM novel WHERE id=?').bind(c.req.param('id')).first()
     return c.json({ code: 200, data: {...updated, chapterCount: updated.chapter_count} })
@@ -660,7 +661,6 @@ api.post('/ai/test', auth, async (c) => {
 
 // ========== AI 生成（透传） ==========
 api.post('/ai/generate-outline', auth, async (c) => {
-  let chapterId = null
   try {
     const { novelId, providerId, prompt } = await c.req.json()
     const uid = c.get('jwtPayload').userId
@@ -674,16 +674,6 @@ api.post('/ai/generate-outline', auth, async (c) => {
       return c.json({ code: 400, message: '小说不存在或无权访问' })
     }
     
-    const max = await db.prepare('SELECT MAX(chapter_number) as m FROM chapter WHERE novel_id=?').bind(novelId).first()
-    const num = (max?.m||0) + 1
-    const title = `【大纲】${novel.title}`
-    const result = await db.prepare(
-      'INSERT INTO chapter(novel_id,chapter_number,title,content) VALUES(?,?,?,?)'
-    ).bind(novelId, num, title, 'AI 生成中...').run()
-    chapterId = result.meta.last_row_id
-    
-    console.log('创建章节ID:', chapterId)
-
     let provider = null
     if (providerId) {
       provider = await db.prepare('SELECT * FROM model_provider WHERE id=? AND user_id=?').bind(providerId, uid).first()
@@ -697,7 +687,6 @@ api.post('/ai/generate-outline', auth, async (c) => {
     
     if (!provider) {
       const errorMsg = '错误：请先在"模型管理"中配置AI模型服务商'
-      await db.prepare('UPDATE chapter SET content=? WHERE id=?').bind(errorMsg, chapterId).run()
       console.error(errorMsg)
       return c.json({ code: 400, message: errorMsg })
     }
@@ -766,8 +755,6 @@ api.post('/ai/generate-outline', auth, async (c) => {
     if (!aiResp.ok) {
       const errorText = await aiResp.text()
       console.error('AI API Error:', aiResp.status, errorText)
-      const errorMsg = `AI服务调用失败 (${aiResp.status}): ${errorText.substring(0, 200)}`
-      await db.prepare('UPDATE chapter SET content=? WHERE id=?').bind(errorMsg, chapterId).run()
       return c.json({ code: 500, message: `AI服务调用失败: ${aiResp.status}` })
     }
 
@@ -813,31 +800,19 @@ api.post('/ai/generate-outline', auth, async (c) => {
       content = `无法解析AI响应，请检查服务商配置。响应格式: ${JSON.stringify(Object.keys(aiJson || {})).substring(0, 100)}`
     }
 
-    // 计算字数（保留空白字符，统计所有字符）
+    // 将大纲保存到novel表（不创建章节）
     const wordCount = content.length
-    await db.prepare('UPDATE chapter SET content=?,word_count=? WHERE id=?').bind(content, wordCount, chapterId).run()
-    await db.prepare('UPDATE novel SET chapter_count=chapter_count+1,updated_at=? WHERE id=?').bind(now(), novelId).run()
+    await db.prepare('UPDATE novel SET outline=?, updated_at=? WHERE id=?').bind(content, now(), novelId).run()
 
-    const chapter = await db.prepare('SELECT * FROM chapter WHERE id=?').bind(chapterId).first()
-    console.log('大纲生成成功:', chapterId, '内容长度:', content.length)
+    console.log('大纲生成成功:', novelId, '内容长度:', content.length)
     
     return c.json({ code: 200, data: {
-      id: chapter.id,
-      novelId: chapter.novel_id,
-      chapterNumber: chapter.chapter_number,
-      title: chapter.title,
-      content: chapter.content,
-      outline: chapter.outline || '',
-      status: chapter.status || 'draft',
-      wordCount: chapter.word_count,
-      createdAt: chapter.created_at,
-      updatedAt: chapter.updated_at
+      novelId: novelId,
+      outline: content,
+      wordCount: wordCount
     } })
   } catch(e) { 
-    console.error('AI生成错误:', e.message, e.stack)
-    if (chapterId) {
-      await c.env.DB.prepare('UPDATE chapter SET content=? WHERE id=?').bind(`生成失败: ${e.message}`, chapterId).run()
-    }
+    console.error('AI生成大纲错误:', e.message, e.stack)
     return c.json({ code: 500, message: `生成失败: ${e.message}` })
   }
 })
