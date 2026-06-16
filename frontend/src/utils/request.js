@@ -3,7 +3,7 @@ import { ElMessage } from 'element-plus'
 
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
-  timeout: 60000
+  timeout: 120000
 })
 
 // Request interceptor: attach JWT token
