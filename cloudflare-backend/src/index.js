@@ -771,27 +771,44 @@ api.post('/ai/generate-outline', auth, async (c) => {
     }
 
     const aiJson = await aiResp.json()
-    console.log('AI响应数据:', JSON.stringify(aiJson).substring(0, 800))
+    console.log('AI响应数据:', JSON.stringify(aiJson).substring(0, 1000))
+    console.log('AI响应choices长度:', aiJson?.choices?.length)
+    console.log('AI响应choices[0]:', JSON.stringify(aiJson?.choices?.[0]).substring(0, 500))
+    console.log('AI响应choices[0].message:', JSON.stringify(aiJson?.choices?.[0]?.message).substring(0, 500))
     
     let content = '大纲生成失败'
     if (aiJson?.choices?.[0]?.message?.content) {
       content = aiJson.choices[0].message.content
+      console.log('解析成功: choices[0].message.content')
     } else if (aiJson?.choices?.[0]?.delta?.content) {
       content = aiJson.choices[0].delta.content
+      console.log('解析成功: choices[0].delta.content')
+    } else if (aiJson?.choices?.[0]?.text) {
+      content = aiJson.choices[0].text
+      console.log('解析成功: choices[0].text')
     } else if (aiJson?.output?.text) {
       content = aiJson.output.text
+      console.log('解析成功: output.text')
     } else if (aiJson?.result) {
       content = aiJson.result
+      console.log('解析成功: result')
     } else if (aiJson?.output) {
       content = typeof aiJson.output === 'string' ? aiJson.output : JSON.stringify(aiJson.output)
+      console.log('解析成功: output')
     } else if (aiJson?.text) {
       content = aiJson.text
+      console.log('解析成功: text')
     } else if (aiJson?.data?.choices?.[0]?.message?.content) {
       content = aiJson.data.choices[0].message.content
+      console.log('解析成功: data.choices[0].message.content')
     } else if (aiJson?.response) {
       content = typeof aiJson.response === 'string' ? aiJson.response : JSON.stringify(aiJson.response)
+      console.log('解析成功: response')
     } else {
       console.error('无法解析AI响应:', JSON.stringify(aiJson))
+      // 尝试更深入的调试
+      const choicesStr = JSON.stringify(aiJson?.choices || 'undefined')
+      console.error('choices详细内容:', choicesStr.substring(0, 1000))
       content = `无法解析AI响应，请检查服务商配置。响应格式: ${JSON.stringify(Object.keys(aiJson || {})).substring(0, 100)}`
     }
 
