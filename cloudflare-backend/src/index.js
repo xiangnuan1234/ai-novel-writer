@@ -540,7 +540,7 @@ api.get('/uploads/covers/:name', async (c) => {
 api.get('/ai/test', async (c) => {
   try {
     const db = c.env.DB
-    const providers = await db.prepare('SELECT * FROM providers WHERE is_default = 1 LIMIT 1').all()
+    const providers = await db.prepare('SELECT * FROM model_provider WHERE is_default = 1 LIMIT 1').all()
     if (!providers.results.length) {
       return c.json({ code: 400, message: '请先配置默认模型服务商' })
     }
