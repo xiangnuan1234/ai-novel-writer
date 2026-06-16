@@ -702,17 +702,23 @@ api.post('/ai/generate-outline', auth, async (c) => {
     let content = '大纲生成失败'
     if (aiJson?.choices?.[0]?.message?.content) {
       content = aiJson.choices[0].message.content
+    } else if (aiJson?.choices?.[0]?.delta?.content) {
+      content = aiJson.choices[0].delta.content
     } else if (aiJson?.output?.text) {
       content = aiJson.output.text
     } else if (aiJson?.result) {
       content = aiJson.result
     } else if (aiJson?.output) {
-      content = aiJson.output
+      content = typeof aiJson.output === 'string' ? aiJson.output : JSON.stringify(aiJson.output)
     } else if (aiJson?.text) {
       content = aiJson.text
+    } else if (aiJson?.data?.choices?.[0]?.message?.content) {
+      content = aiJson.data.choices[0].message.content
+    } else if (aiJson?.response) {
+      content = typeof aiJson.response === 'string' ? aiJson.response : JSON.stringify(aiJson.response)
     } else {
       console.error('无法解析AI响应:', JSON.stringify(aiJson))
-      content = '无法解析AI响应，请检查服务商配置'
+      content = `无法解析AI响应，请检查服务商配置。响应格式: ${JSON.stringify(Object.keys(aiJson || {})).substring(0, 100)}`
     }
 
     await db.prepare('UPDATE chapter SET content=?,word_count=? WHERE id=?').bind(content, content.replace(/\s/g,'').length, chapterId).run()
