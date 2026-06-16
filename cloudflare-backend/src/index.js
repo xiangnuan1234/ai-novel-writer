@@ -637,6 +637,21 @@ api.post('/provider', auth, async (c) => {
   return c.json({ code: 200, data: { id: p.id, providerName: p.provider_name, providerType: p.provider_type, baseUrl: p.base_url, modelName: p.model_name, isDefault: !!p.is_default } })
 })
 
+api.put('/provider/:id', auth, async (c) => {
+  const uid = c.get('jwtPayload').userId
+  const { providerName, providerType, baseUrl, apiKey, modelName, isDefault } = await c.req.json()
+  const db = c.env.DB
+  
+  if (isDefault) await db.prepare('UPDATE model_provider SET is_default=0 WHERE user_id=?').bind(uid).run()
+  
+  await db.prepare(
+    'UPDATE model_provider SET provider_name=?,provider_type=?,base_url=?,api_key=?,model_name=?,is_default=? WHERE id=? AND user_id=?'
+  ).bind(providerName, providerType, baseUrl, apiKey, modelName, isDefault?1:0, c.req.param('id'), uid).run()
+  
+  const p = await db.prepare('SELECT * FROM model_provider WHERE id=?').bind(c.req.param('id')).first()
+  return c.json({ code: 200, data: { id: p.id, providerName: p.provider_name, providerType: p.provider_type, baseUrl: p.base_url, modelName: p.model_name, isDefault: !!p.is_default } })
+})
+
 api.delete('/provider/:id', auth, async (c) => {
   const uid = c.get('jwtPayload').userId
   await c.env.DB.prepare('DELETE FROM model_provider WHERE id=? AND user_id=?').bind(c.req.param('id'), uid).run()
