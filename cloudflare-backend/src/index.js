@@ -872,14 +872,27 @@ api.post('/ai/generate-chapter', auth, async (c) => {
     const headers = { 'Content-Type': 'application/json' }
     if (provider.api_key && provider.api_key.trim()) headers['Authorization'] = `Bearer ${provider.api_key}`
 
-    let aiUrl = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyun')
-      ? 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
-      : (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
+    const isDashScope = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyuncs')
+    const isModelScope = provider.base_url.includes('modelscope')
+    
+    let aiUrl
+    if (isDashScope) {
+      aiUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+    } else if (isModelScope) {
+      aiUrl = 'https://api-inference.modelscope.cn/v1/chat/completions'
+    } else {
+      aiUrl = (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
+    }
+    
+    let modelName = provider.model_name
+    if (isModelScope && !modelName.includes('/')) {
+      modelName = 'qwen/' + modelName
+    }
 
     const aiResp = await fetch(aiUrl, {
       method: 'POST', headers,
       body: JSON.stringify({
-        model: provider.model_name,
+        model: modelName,
         messages: [
           { role: 'system', content: '你是一位专业的小说作家，擅长创作高质量的中文小说内容。' },
           { role: 'user', content: finalPrompt }
@@ -887,7 +900,8 @@ api.post('/ai/generate-chapter', auth, async (c) => {
         temperature: 0.8,
         max_tokens: Math.min(Math.ceil((wordCount || 3000) * 1.5), 8192)
       }),
-      keepalive: true
+      keepalive: true,
+      signal: AbortSignal.timeout(120000)
     })
 
     if (!aiResp.ok) {
@@ -931,14 +945,27 @@ api.post('/ai/continue-writing', auth, async (c) => {
     const headers = { 'Content-Type': 'application/json' }
     if (provider.api_key && provider.api_key.trim()) headers['Authorization'] = `Bearer ${provider.api_key}`
 
-    let aiUrl = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyun')
-      ? 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
-      : (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
+    const isDashScope = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyuncs')
+    const isModelScope = provider.base_url.includes('modelscope')
+    
+    let aiUrl
+    if (isDashScope) {
+      aiUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+    } else if (isModelScope) {
+      aiUrl = 'https://api-inference.modelscope.cn/v1/chat/completions'
+    } else {
+      aiUrl = (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
+    }
+    
+    let modelName = provider.model_name
+    if (isModelScope && !modelName.includes('/')) {
+      modelName = 'qwen/' + modelName
+    }
 
     const aiResp = await fetch(aiUrl, {
       method: 'POST', headers,
       body: JSON.stringify({
-        model: provider.model_name,
+        model: modelName,
         messages: [
           { role: 'system', content: '你是一位专业的小说作家，擅长续写高质量的中文小说内容。' },
           { role: 'user', content: finalPrompt }
@@ -946,7 +973,8 @@ api.post('/ai/continue-writing', auth, async (c) => {
         temperature: 0.8,
         max_tokens: Math.min(Math.ceil((wordCount || 1000) * 1.5), 8192)
       }),
-      keepalive: true
+      keepalive: true,
+      signal: AbortSignal.timeout(120000)
     })
 
     if (!aiResp.ok) {
@@ -988,14 +1016,27 @@ api.post('/ai/generate-chapter-stream', auth, async (c) => {
   const headers = { 'Content-Type': 'application/json' }
   if (provider.api_key && provider.api_key.trim()) headers['Authorization'] = `Bearer ${provider.api_key}`
 
-  let aiUrl = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyun')
-    ? 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
-    : (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
+  const isDashScope = provider.base_url.includes('dashscope') || provider.base_url.includes('aliyuncs')
+  const isModelScope = provider.base_url.includes('modelscope')
+  
+  let aiUrl
+  if (isDashScope) {
+    aiUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
+  } else if (isModelScope) {
+    aiUrl = 'https://api-inference.modelscope.cn/v1/chat/completions'
+  } else {
+    aiUrl = (provider.base_url.endsWith('/') ? provider.base_url.slice(0, -1) : provider.base_url) + '/chat/completions'
+  }
+  
+  let modelName = provider.model_name
+  if (isModelScope && !modelName.includes('/')) {
+    modelName = 'qwen/' + modelName
+  }
 
   const aiResp = await fetch(aiUrl, {
     method: 'POST', headers,
     body: JSON.stringify({
-      model: provider.model_name,
+      model: modelName,
       messages: [
         { role: 'system', content: '你是一位专业的小说作家，擅长创作高质量的中文小说内容。' },
         { role: 'user', content: finalPrompt }
@@ -1004,7 +1045,8 @@ api.post('/ai/generate-chapter-stream', auth, async (c) => {
       max_tokens: Math.min(Math.ceil((wordCount || 3000) * 1.5), 8192),
       stream: true
     }),
-    keepalive: true
+    keepalive: true,
+    signal: AbortSignal.timeout(120000)
   })
 
   if (!aiResp.ok) {
